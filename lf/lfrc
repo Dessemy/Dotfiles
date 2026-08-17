@@ -1,5 +1,3 @@
-
-
 set period 1
 set hidden!
 set hiddenfiles ".*:*.aux:*.log:*.bbl:*.bcf:*.blg:*.run.xml"
