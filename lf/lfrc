@@ -1,7 +1,9 @@
+
+
 set period 1
 set hidden!
 set hiddenfiles ".*:*.aux:*.log:*.bbl:*.bcf:*.blg:*.run.xml"
-set previewer '~/.config/scripts/previwer'
+set previewer '~/.config/lf/previewer'
 set incsearch
 set incfilter
 set ratios 2:3:4
@@ -66,7 +68,7 @@ cmd open ${{
 		("/dev/tty"*)
 			"${MPV:-mpv}" --keep-open $fx
 		;;
-		(*) dem "${IMAGE_VIEWER:-vimiv}" $fx
+		(*) dem "${IMAGE_VIEWER:-gimp}" $fx
 		esac
 	;;
 	(audio/*)
@@ -144,21 +146,16 @@ cmd openwith ${{
 		app=$(menu_select <<-\EOF
 		$EDITOR
 		$EDITOR (new terminal)
-		nano
-		nano (new terminal)
 		EOF
 		)
 		case "$app" in
 		(1) "${EDITOR:-nvim}" $fx ;;
 		(2) dem "${TERMINAL:-foot}" -e "$EDITOR" $fx ;;
-		(3) nano $fx ;;
-		(4) dem "${TERMINAL:-foot}" -e nano $fx ;;
 		esac
 	;;
 
 	(image/svg+xml | image/png | image/jpeg | image/gif )
 		app=$(menu_select <<-\EOF
-		vimiv
 		gimp
 		mpv
 		krita
@@ -166,30 +163,27 @@ cmd openwith ${{
 		EOF
 		)
 		case "$app" in
-		(1) dem vimiv $fx ;;
-		(2) dem gimp $fx ;;
-		(3)
+		(1) dem gimp $fx ;;
+		(2)
 			case "$(tty)" in
 			("/dev/tty"*) "${MPV:-mpv}" --keep-open=yes $fx ;;
 			(*) dem "${MPV:-mpv}" --keep-open=yes $fx ;;
 			esac
 		;;
-		(4) dem krita $fx ;;
-		(5) dem inkscape $fx ;;
+		(3) dem krita $fx ;;
+		(4) dem inkscape $fx ;;
 		esac
 	;;
 
 	(image/x-*)
 		app=$(menu_select <<-\EOF
 		gimp
-		vimiv
 		mpv
 		EOF
 		)
 		case "$app" in
 		(1) dem gimp $fx ;;
-		(2) dem vimiv $fx ;;
-		(3)
+		(2)
 			case "$(tty)" in
 			("/dev/tty"*) "${MPV:-mpv}" --keep-open=yes $fx ;;
 			(*) dem "${MPV:-mpv}" --keep-open=yes $fx ;;
@@ -268,11 +262,27 @@ cmd shred ${{
 				if [ -f "$f" ]; then
 					shred -u -n 3 "$f" >/dev/null 2>&1 &
 				elif [ -d "$f" ]; then
-					rshred -fdu "$f"
+					find "$f" -type f -exec shred -u -n 3 {} \; >/dev/null 2>&1
+					rm -rf -- "$f"
 				fi
 			done
 		;;
 	esac
+}}
+
+cmd compress ${{
+	clear
+	format=$(printf '%s\n' zip tar.gz 7z | fzf --prompt="Archive format: ")
+	[ -z "$format" ] && exit 0
+	printf "Archive name (without extension): "
+	read -r name
+	[ -z "$name" ] && name="archive"
+	case "$format" in
+		(zip) apack "${name}.zip" $fx ;;
+		(tar.gz) apack "${name}.tar.gz" $fx ;;
+		(7z) apack "${name}.7z" $fx ;;
+	esac
+	lf -remote "send $id reload"
 }}
 
 cmd extract ${{
@@ -317,17 +327,6 @@ cmd copyto ${{
 	notify-send "lf" "File(s) copied to $dest"
 }}
 
-cmd broot ${{
-	selected="$(broot)"
-	if [ -d "$selected" ]; then
-		lf -remote "send ${id} cd \"${selected}\""
-	elif [ -e "$selected" ]; then
-		lf -remote "send ${id} select \"${selected}\""
-	else
-		>&2 printf "Could not select %s\n" "${selected}"
-	fi
-}}
-
 cmd paste_link %{{
 	IFS='
 '
@@ -351,49 +350,23 @@ cmd follow_link %{{
 	lf -remote "send ${id} select \"$(readlink $f)\""
 }}
 
-cmd zlua %{{
-	lf -remote "send ${id} cd \"$(z.lua -e $*)\""
+cmd zoxide %{{
+	lf -remote "send ${id} cd \"$(zoxide query -- $*)\""
 }}
 
-cmd zlua_i ${{
-	dir=$(z.lua -l "$@" \
+cmd zoxide_i ${{
+	dir=$(zoxide query -l -s "$@" \
 		| fzf --nth 2.. --tac +s -e \
-			--header "Directorios frecientes" --header-first \
+			--header "Frecent directories" --header-first \
 			--preview "lsd --color always --icon never --tree --depth 3 --group-dirs first {+2} 2>/dev/null" \
 		| awk '{print substr($0, index($0,$2))}'
 	)
 	lf -remote "send ${id} cd \"${dir}\""
 }}
 
-cmd gsh %{{
-	lf -remote "send ${id} cd \"$(g.sh -x $*)\""
-}}
-
-cmd gsh_fuzzy %{{
-	lf -remote "send ${id} cd \"$(_GS_GREP='fzf -f' g.sh -l $* | awk 'NR==1{print $2}')\""
-}}
-
-cmd gsh_i ${{
-	selected=$(g.sh -l "$@" \
-		| fzf --nth 2.. --tac +s -e \
-		--header "Directorios marcados" --header-first \
-		--preview "lsd --color always --icon never --tree --depth 2 --group-dirs first {+2} 2>/dev/null" \
-		| awk '{print substr($0, index($0,$2))}'
-	)
-	if [ -d "$selected" ]; then
-		lf -remote "send ${id} cd \"${selected}\""
-	elif [ -e "$selected" ]; then
-		lf -remote "send ${id} select \"${selected}\""
-	else
-		>&2 printf "Could not select %s\n" "${selected}"
-	fi
-}}
-
 cmd stop ${{
 	kill -TSTP $(ps -p $$ -o 'ppid=')
 }}
-
-cmd setbg "$1"
 
 map h updir
 map j down
@@ -405,23 +378,10 @@ map } half-down
 map <c-n> down
 map <c-p> up
 
-map f
-map f1 $lf -remote "send $id select \"$(ffd -p --depth 1 +m)\""
-map f2 $lf -remote "send $id select \"$(ffd -p --depth 2 +m)\""
-map f3 $lf -remote "send $id select \"$(ffd -p --depth 3 +m)\""
-map ff broot
-map F  $lf -remote "send $id select \"$(ffd -p +m)\""
 map -  search
 map _  search-back
 map zf find
 map zF find-back
-
-map rg $lf -remote "send $id select \"$(rgfzf -p)\""
-map rG $lf -remote "send $id select \"$(rgfzf -p --depth 1)\""
-map rf $lf -remote "send $id select \"$(rgfzf -dp)\""
-map rF $lf -remote "send $id select \"$(rgfzf -dp --depth 1)\""
-map ra $lf -remote "send $id select \"$(rgfzf -dp --rg=rga --depth 1 -s 0.3)\""
-map rA $lf -remote "send $id select \"$(rgfzf -dp --rg=rga -s 0.8)\""
 
 map Km maps
 map Kc cmaps
@@ -439,25 +399,17 @@ map <enter> shell
 map x $$f
 map X !$f
 map <a-x> chmodx
-map <a-X> $setbg $f
-map C &compila $f
-map <a-c> $compila -ir $f
 map o &mimeopen $f
 map O $mimeopen --ask $f
 map U glob-unselect *
 map <a-u> glob-select *
 
-map z<space> push :zlua<space>
-map <a-z> zlua_i
-map <a-g> gsh_i
-map zo zlua_i
-map g<space> push :gsh<space>
-map gf push :gsh_fuzzy<space>
-map go gsh_i
+map z<space> push :zoxide<space>
+map <a-z> zoxide_i
+map zo zoxide_i
 map gl follow_link
 map gr cd /
 map gt cd /tmp
-map gs $lf -remote "send $id cd \"$SCRIPTS\""
 map J jumps
 
 cmd drag_all &ls -Ah --zero | xargs -d'\0' dragon-drag-and-drop 2>/dev/null
@@ -467,10 +419,6 @@ map dl drag_all
 map dL drag_allx  
 map ds &dragon-drag-and-drop $fx
 map dS &dragon-drag-and-drop -a -x $fx
-map dm &drag mv "$PWD"
-map dc &drag cp "$PWD"
-map dw &drag wget "$PWD"
-
 cmap <tab> cmd-menu-complete
 cmap <backtab> cmd-menu-complete-back
 cmap <a-h> cmd-left
@@ -485,6 +433,7 @@ map r
 map i rename
 map A push i<a-A>
 map cc push i<a-A><c-u>
+map ca compress
 map I push i<c-a>
 map a push i<a-A><a-b>
 map b $vidir 
@@ -498,4 +447,4 @@ map W &{ nohup "${TERMINAL:-foot}" >/dev/null 2>&1& }
 
 map Y $printf "%s" "$fx" | wl-copy
 
-map cb &fondo-awesome $f
+
