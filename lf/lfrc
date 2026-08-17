@@ -1,7 +1,7 @@
 set period 1
 set hidden!
 set hiddenfiles ".*:*.aux:*.log:*.bbl:*.bcf:*.blg:*.run.xml"
-set previewer '~/.config/lf/previewer'
+set previewer '~/.config/scripts/previewer'
 set incsearch
 set incfilter
 set ratios 2:3:4
