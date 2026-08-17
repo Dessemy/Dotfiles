@@ -498,7 +498,7 @@ wireguard-tools grim slurp nodejs npm waylock brightnessctl playerctl libnotify 
 xdg-desktop-portal-no-systemd-rtkit xdg-desktop-portal-wlr qt5-wayland qt6-wayland
 lf bat chafa jq perl-image-exiftool fzf ripgrep fd wl-clipboard lsd lynx poppler imagemagick
 atool gnupg man-db trash-cli librsvg odt2txt catdoc sqlite moreutils ffmpegthumbnailer
-zathura zathura-pdf-mupdf xdg-utils imv dragon-drag-and-drop unrar
+zathura zathura-pdf-mupdf xdg-utils gimp dragon-drag-and-drop unrar
 perl-file-mimeinfo archivemount"
 
 for pkg in \$DWL_PKGS; do
