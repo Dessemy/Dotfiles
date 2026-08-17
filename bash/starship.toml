@@ -1,0 +1,158 @@
+"$schema" = "https://starship.rs/config-schema.json"
+scan_timeout = 100
+command_timeout = 500
+follow_symlinks = false
+add_newline = false
+
+format = """
+$directory\
+${custom.giturl}\
+$git_branch\
+${custom.git_worktree}\
+$git_status\
+$line_break\
+$character\
+"""
+right_format = """$all"""
+
+[directory]
+style = "fg:#94e2d5"
+format = "[ $path ]($style)"
+truncation_length = 4
+
+[directory.substitutions]
+"Documents" = "󰈙 "
+"Downloads" = " "
+"Music" = " "
+"Pictures" = " "
+"Developer" = "󰲋 "
+"Others" = " "
+
+[username]
+disabled = true
+show_always = true
+style_user = "bg:#313244 fg:#cdd6f4"
+style_root = "bg:#313244 fg:#cdd6f4"
+format = " $user "
+
+[line_break]
+disabled = true
+
+[character]
+disabled = false
+success_symbol = "[ ](bold fg:#a6e3a1)"
+error_symbol = "[✘ ](bold fg:#f38ba8)"
+vimcmd_symbol = "[: ](bold fg:#f9e2af)"
+
+[package]
+disabled = false
+
+[time]
+disabled = true
+time_format = "%R"
+format = "[[  $time ](fg:#f9e2af bg:#89dceb)]($style)"
+
+[custom.giturl]
+description = "Display symbol for remote Git server"
+command = """
+GIT_REMOTE=$(command git ls-remote --get-url 2> /dev/null)
+if [[ "$GIT_REMOTE" =~ "github" ]]; then
+    GIT_REMOTE_SYMBOL=" "
+elif [[ "$GIT_REMOTE" =~ "gitlab" ]]; then
+    GIT_REMOTE_SYMBOL=" "
+elif [[ "$GIT_REMOTE" =~ "bitbucket" ]]; then
+    GIT_REMOTE_SYMBOL=" "
+elif [[ "$GIT_REMOTE" =~ "git" ]]; then
+    GIT_REMOTE_SYMBOL=" "
+else
+    GIT_REMOTE_SYMBOL=" "
+fi
+echo "$GIT_REMOTE_SYMBOL "
+"""
+when = "git rev-parse --is-inside-work-tree 2> /dev/null"
+format = "$output"
+require_repo = true
+ignore_timeout = true
+
+[git_branch]
+symbol = "[](fg:#1e1e2e) "
+style = "fg:#b4befe bg:#1e1e2e"
+format = "  [$symbol$branch]($style)[](fg:#1e1e2e)"
+
+[git_status]
+format = "[$untracked$staged$modified$renamed$conflicted$ahead_behind ]($style)"
+staged     = "[+](fg:#a6e3a1)"
+modified   = "[!](fg:#f9e2af)"
+renamed    = "[»](fg:#89b4fa)"
+deleted    = "[-](fg:#f38ba8)"
+untracked  = "[?](fg:#f38ba8)"
+stashed    = "[≡](fg:#b4befe)"
+conflicted = "[✖](bold fg:#f38ba8)"
+
+ahead      = "[⇡${count}](fg:#94e2d5)"
+behind     = "[⇣${count}](fg:#fab387)"
+diverged   = "[⇕⇡${ahead_count}⇣${behind_count}](fg:#cba6f7)"
+
+[custom.git_worktree]
+description = "Show indicator when inside a git worktree"
+command = """
+if git rev-parse --git-dir >/dev/null 2>&1; then
+      common_dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+      git_dir=$(git rev-parse --path-format=absolute --git-dir 2>/dev/null)
+      if [ "$common_dir" != "$git_dir" ]; then
+            echo "⛓ "
+      fi
+fi
+"""
+when = "git rev-parse --is-inside-work-tree >/dev/null 2>&1"
+format = " ([$output ]($style))"
+style = "bold fg:#a6e3a1"
+require_repo = true
+ignore_timeout = true
+
+[os]
+disabled = true
+
+[nodejs]
+symbol = ""
+format = "[ $symbol( $version) ]($style)"
+
+[bun]
+detect_files = ["bun.lock", "bun.lockb"]
+
+[c]
+symbol = " "
+format = "[ $symbol( $version) ]($style)"
+
+[rust]
+symbol = ""
+format = "[ $symbol( $version) ]($style)"
+
+[golang]
+symbol = ""
+format = "[ $symbol( $version) ]($style)"
+detect_files = ["go.mod"]
+
+[php]
+symbol = ""
+format = "[ $symbol( $version) ]($style)"
+
+[java]
+symbol = " "
+format = "[ $symbol( $version) ]($style)"
+
+[kotlin]
+symbol = ""
+format = "[ $symbol( $version) ]($style)"
+
+[haskell]
+symbol = ""
+format = "[ $symbol( $version) ]($style)"
+
+[python]
+symbol = ""
+format = "[ $symbol( $version) ]($style)"
+
+[docker_context]
+symbol = ""
+format = "[ $symbol( $context) ]($style)"

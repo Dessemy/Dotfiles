@@ -1,0 +1,147 @@
+#!/bin/sh
+
+set -C -f
+IFS='
+'
+
+image() {
+	if [ -f "$1" ] && hash chafa >/dev/null 2>&1
+	then
+		timeout 3 chafa -f sixel --size "${2}x${3}" -- "$1" || exiftool -j "$6" | jq -C
+	else
+		exiftool -j "$6" | jq -C
+	fi
+}
+
+create_cache() {
+	CACHE="${XDG_CACHE_HOME:-"$HOME/.cache"}/lf/thumb.$(stat --printf '%n\0%i\0%F\0%s\0%W\0%Y' \
+		-- "$(readlink -f "$1" || realpath "$1" )" \
+		| sha256sum \
+		| cut -d' ' -f1)"
+}
+
+mime_preview() {
+	case "$mime_type","$ran_guard" in
+	(image/svg+xml,0 | image/svg)
+		create_cache "$1"
+		[ -f "$CACHE.png" ] \
+			|| rsvg-convert  -o "$CACHE.png" -a -w "1000" -b '#1f2430' "$1"
+		image "$CACHE.png" "$2" "$3" "$4" "$5" "$1"
+	;;
+	(image/*,0)
+		image "$1" "$2" "$3" "$4" "$5" "$1"
+	;;
+	(text/html,0)
+		lynx -width="$4" -display_charset=utf-8 -dump -- "$1"
+	;;
+	(text/troff,0)
+		case "${1##*.}" in
+		([0-9] | [01]p | [23]*)
+			man ./ "$1" | col -b
+		;;
+		(*)
+			bat --terminal-width "$(($4*7/9))" -f "$1" --style=numbers
+		esac
+	;;
+	(text/*,0 | */xml,0 | application/javascript,0 | application/x-subrip,0 )
+		bat --terminal-width "$(($4*7/9))" -f "$1" --style=numbers
+	;;
+	( application/x-pie-executable,0 | application/x-executable,0 | \
+	application/x-sharedlib,0)
+		objdump -d "$1" -M intel
+	;;
+	(application/json,0)
+		case "${1##*.}" in
+		(ipynb)
+			ipynb-py-convert --stdout "$1" \
+				| bat --terminal-width "$(($4*7/9))" --color=always -l python --style=numbers
+		;;
+		(*) jq -C < "$1" ;;
+		esac
+	;;
+	(application/zip,0 | application/x-7z-compressed,0 )
+		atool --list -- "$1"
+	;;
+	(audio/*,[01])
+		exiftool -j "$1" | jq -C
+	;;
+	(video/webm,0)
+		mime_type="$(exiftool -s3 -MIMEType "$1")" \
+		ran_guard=$((ran_guard+1))
+		mime_preview "$@"
+		;;
+	(video/*,[01])
+		create_cache "$1"
+		[ -f "$CACHE" ] \
+			|| ffmpegthumbnailer -i "$1" -o "$CACHE" -s 0
+		image "$CACHE" "$2" "$3" "$4" "$5" "$1"
+	;;
+	(*/pdf,0 | */postscript,0)
+		create_cache "$1"
+		[ -f "$CACHE.jpg" ] \
+			|| pdftoppm -jpeg -f 1 -singlefile "$1" "$CACHE"
+		image "$CACHE.jpg" "$2" "$3" "$4" "$5" "$1"
+	;;
+	(application/font*,0 | application/*opentype,0 | font/sfnt,0)
+		create_cache "$1"
+		[ -f "$CACHE.png" ] \
+			|| convert -size "800x800" "xc:#000000" -fill "#ffffff" \
+				-pointsize "72" -font "$1" -gravity center -annotate +0+0 \
+				"ABCDEFGHIJKLM\nNOPQRSTUVWXYZ\nabcdefghijklm\nnopqrstuvwxyz\n1234567890\n!@#$\%^&*,.;:\n_-=+'\"|\\(){}[]" \
+				"$CACHE.png"
+		image "$CACHE.png" "$2" "$3" "$4" "$5" "$1"
+	;;
+	(*opendocument*,0)
+		CCt='	' \
+		bytes=$(du -sb "$1") bytes="${bytes%%"$CCt"*}"
+		if [ "$bytes" -lt 150000 ]; then
+			odt2txt "$1"
+		else
+			printf "file too big too preview quickly\n"
+		fi
+	;;
+	(*ms-excel,0)
+		xls2csv -- "$1" \
+			| bat --terminal-width "$(($4*7/9))" --color=always -l csv --style=numbers
+	;;
+	(text/rtf,0 | *msword,0 )
+		catdoc -- "$1"
+	;;
+	(application/pgp-encrypted,0)
+		printf "PGP armored ASCII \033[1;31mencrypted\033[m file,\ntry using gpg to decrypt it\n\n"
+		cat "$1"
+	;;
+	(application/octet-stream,0)
+		case "${1##*.}" in
+		(gpg)
+			printf "OpenPGP \033[1;31mencrypted\033[m file,\ntry using gpg to decrypt it\n\n"
+		;;
+		(*) exiftool -j "$1" | jq -C
+		esac
+	;;
+	(application/vnd.sqlite3,0)
+		table=$(sqlite3 "$1" '.tables')
+		sqlite3 "$1" ".headers on" ".mode markdown" "select * from $table"
+		;;
+	(inode/directory,0)
+		entries=$(ls -1A --color=never -- "$1" 2>/dev/null)
+		if [ -n "$entries" ]; then
+			printf '%s\n' "$entries"
+		else
+			printf "Empty directory\n"
+		fi
+	;;
+	(*)
+		timeout 2 exiftool -j "$1" 2>/dev/null | jq -C 2>/dev/null || printf "No preview available\n"
+	;;
+	esac
+	return 1
+}
+
+main() {
+	mime_type="$(file --dereference -b --mime-type -- "$1")" \
+	ran_guard=0
+	mime_preview "$@" || return $?
+}
+
+main "$@" || exit $?

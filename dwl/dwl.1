@@ -1,0 +1,184 @@
+.Dd August 9, 2026
+.Dt DWL 1
+.Os
+.Sh NAME
+.Nm dwl
+.Nd dwm for Wayland
+.Sh SYNOPSIS
+.Nm
+.Op Fl v
+.Op Fl d
+.Op Fl s Ar startup command
+.Sh DESCRIPTION
+.Nm
+is a Wayland compositor based on wlroots, filling the same niche as
+.Nm dwm
+does for X11.
+This build includes the
+.Em bar ,
+.Em gaps
+and
+.Em vanitygaps
+patches: it draws its own status bar and gaps, no external bar needed.
+.Pp
+.Fl v :
+print version and exit.
+.Fl d :
+enable full wlroots debug logging.
+.Fl s Ar cmd :
+run
+.Ar cmd
+as a session/autostart command (killed with SIGTERM on exit).
+Unrelated to the status bar, which
+.Nm
+reads from its own stdin
+.Pq Sx STATUS INFORMATION .
+.Pp
+Customize by editing
+.Pa config.h .
+Default bindings:
+.Bl -tag -width 20n -offset indent -compact
+.It Mod-Return
+Spawn
+.Xr foot 1 .
+.It Mod-q
+Spawn
+.Xr qutebrowser 1 .
+.It Mod-p
+Spawn
+.Xr hyprpicker 1 .
+.It Mod-Shift-v
+VPN toggle script.
+.It Mod-s / Mod-Ctrl-s
+Screenshot: full / area.
+.It Mod-Tab
+Application launcher.
+.It Mod-y / r / g / b / w / i
+Terminal apps: yazi / rmpc / gotop / bluetui / wiremix / impala.
+.It XF86MonBrightness Up/Down
+Brightness.
+.It XF86Audio Raise/Lower/Mute/MicMute
+Volume.
+.It Mod-[jk]
+Focus down/up.
+.It Mod-Shift-[IP]
+Master area window count.
+.It Mod-[hl]
+Master area size.
+.It Mod-Space
+Cycle layout.
+.It Mod-Shift-Space
+Toggle floating.
+.It Mod-e
+Toggle fullscreen.
+.It Mod-a
+Toggle gaps.
+.It Mod-Shift-b
+Toggle bar.
+.It Mod-Ctrl-c
+Close window.
+.It Mod-0 / Mod-Shift-0
+Show/tag all.
+.It Mod-,/.
+Focus prev/next monitor.
+.It Mod-Shift-,/.
+Move window to prev/next monitor.
+.It Mod-[1-9]
+View tag.
+.It Mod-Ctrl-[1-9]
+Add tag to view.
+.It Mod-Shift-[1-9]
+Move window to tag.
+.It Mod-Ctrl-Shift-[1-9]
+Toggle tag on window.
+.It Mod-Shift-q
+Quit.
+.It Ctrl-Alt-Backspace
+Quit (Terminate_Server).
+.It Ctrl-Alt-F[1-12]
+Switch VT.
+.El
+Defaults from
+.Pa config.def.h ;
+check
+.Pa config.h
+for what's actually built.
+.Ss Mouse
+.Bl -tag -width 20n -offset indent -compact
+.It Mod-Button1/3
+Move/resize window (drag).
+.It Mod-Button2
+Toggle floating.
+.It Button2 on bar title
+Zoom window.
+.It Button2 on bar status
+Spawn
+.Xr foot 1 .
+.It Button1/3 on bar tag
+View/toggle tag.
+.It Mod-Button1/3 on bar tag
+Tag/toggle-tag window.
+.El
+.Sh STATUS INFORMATION
+.Nm
+does not print to stdout for an external bar; it reads status text
+.Em from
+its own stdin for its built-in bar, one line at a time.
+.Pp
+A line may hold multiple
+.Sq \&|Ns -separated
+segments plus ANSI SGR color codes
+.Pq Sy \e033[ Ns Ar n Ns Sy m :
+.Bl -tag -width 6n -offset indent -compact
+.It 0 / 1
+Reset / bold.
+.It 4 / 24
+Underline on/off.
+.It 7 / 27
+Inverse on/off.
+.It 30-37 / 40-47
+Fg/bg color, indexes
+.Ar barcolors[0-7]
+in
+.Pa config.h .
+.El
+.Pp
+Feed it like:
+.Bd -literal -offset indent
+slstatus -s | dwl
+.Ed
+.Pp
+(the
+.Fl s
+startup command above is separate and unrelated to this.)
+.Sh ENVIRONMENT
+.Bl -tag -width XDG_RUNTIME_DIR -compact
+.It Ev XDG_RUNTIME_DIR
+Wayland socket location.
+.It Ev XDG_CONFIG_DIR
+Config search path (incl. libxkbcommon).
+.It Ev DISPLAY , WAYLAND_DISPLAY , WAYLAND_SOCKET
+Server connection.
+.It Ev WLR_*
+wlroots settings.
+.It Ev XKB_* , XLOCALEDIR , XCOMPOSEFILE
+libxkbcommon settings.
+.It Ev XCURSOR_PATH
+XCursor theme search path.
+.El
+Set by
+.Nm :
+.Ev WAYLAND_DISPLAY
+and, with Xwayland,
+.Ev DISPLAY .
+.Sh EXAMPLES
+.Bd -literal -offset indent
+slstatus -s | dwl -s 's6-svscan <&-'
+.Ed
+.Sh SEE ALSO
+.Xr dwm 1 ,
+.Xr slstatus 1 ,
+.Xr foot 1 ,
+.Xr xkeyboard-config 7
+.Sh BUGS
+All of them.

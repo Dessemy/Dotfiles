@@ -1,0 +1,37 @@
+#!/bin/sh
+
+rfkill unblock all
+
+brightnessctl set 1% >/dev/null 2>&1
+
+export XDG_CURRENT_DESKTOP=wlroots
+export XDG_SESSION_TYPE=wayland
+
+exec dbus-run-session -- sh -c '
+	pipewire &
+	PW_PID=$!
+	pipewire-pulse &
+	PWPULSE_PID=$!
+	wireplumber &
+	WP_PID=$!
+
+	pkill -9 -x xdg-desktop-portal-wlr 2>/dev/null
+	pkill -9 -x xdg-desktop-portal 2>/dev/null
+
+	CLIPSTART="wl-paste --type text --watch cliphist store & wl-paste --type image --watch cliphist store &"
+
+	WALLPAPER="$(cat "$HOME/.cache/current_wallpaper" 2>/dev/null)"
+	if [ -n "$WALLPAPER" ] && [ -f "$WALLPAPER" ]; then
+		WALLSTART="swaybg -i \"$WALLPAPER\" -m fill &"
+	else
+		WALLSTART=""
+	fi
+
+	PORTALSTART="/usr/lib/xdg-desktop-portal-wlr & sleep 1; /usr/lib/xdg-desktop-portal &"
+
+	REFRESHSTART="{ state=\"\$HOME/.cache/refresh-rate-state\"; [ -f \"\$state\" ] && command -v wlr-randr >/dev/null 2>&1 && read -r rr_out rr_mode rr_sync < \"\$state\" && [ -n \"\$rr_out\" ] && [ -n \"\$rr_mode\" ] && sleep 1 && wlr-randr --output \"\$rr_out\" --mode \"\$rr_mode\" >/dev/null 2>&1; [ -n \"\$rr_sync\" ] && wlr-randr --output \"\$rr_out\" --adaptive-sync \"\$rr_sync\" >/dev/null 2>&1; } &"
+
+	trap "kill \$PW_PID \$PWPULSE_PID \$WP_PID 2>/dev/null" EXIT
+
+	slstatus -s | dwl -s "$CLIPSTART $WALLSTART $PORTALSTART $REFRESHSTART"
+'

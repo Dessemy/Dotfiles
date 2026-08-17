@@ -1,0 +1,501 @@
+set period 1
+set hidden!
+set hiddenfiles ".*:*.aux:*.log:*.bbl:*.bcf:*.blg:*.run.xml"
+set previewer '~/.config/scripts/previwer'
+set incsearch
+set incfilter
+set ratios 2:3:4
+set truncatechar "~"
+set waitmsg "\033[1;31mPress ENTER\033[m"
+set timefmt "02/01/2006 15:04:05 "
+set infotimefmtnew '02/01 15:04'
+set infotimefmtold '02/01/06'
+set errorfmt "\033[1;38;2;247;118;142m"
+set numberfmt "\033[38;2;86;95;137m"
+set dircounts
+set tabstop 4
+set scrolloff 5
+set wrapscroll
+set shellopts '-eu'
+set ifs "\n"
+set shell "bash"
+set ruler 'df:acc:progress:selection:filter:ind'
+set cursorpreviewfmt "\033[7m"
+
+cmd open ${{
+
+	dem() {
+		{ setsid -f "$@" >/dev/null 2>&1& } \
+			|| ({ nohup "$@" >/dev/null 2>&1& } &) \
+			|| (exec "$@" >/dev/null 2>&1&)
+	}
+
+	real_f="$(readlink -f $f || realpath $f)" \
+
+	mime_type="$(\
+		exiftool -s3 -MIMEType "$real_f" 2>/dev/null \
+			|| file --dereference -b --mime-type -- "$real_f" 2>/dev/null
+	)"
+
+	case "$mime_type" in
+	(application/pdf | application/postscript | image/vnd.djvu |  application/epub*)
+		dem "${READER:-zathura}" $fx
+	;;
+	(text/html)
+		case "${f##*.}" in
+		(xls) dem localc $f ;;
+		(*) "${EDITOR:-nvim}" $fx
+		esac
+	;;
+	(text/troff)
+		case "${f##*.}" in
+		([0-9] | [01]p | [23]*) man $fx ;;
+		(*) "${EDITOR:-nvim}" $fx
+		esac
+	;;
+	( text/* | application/json | application/javascript | \
+	application/pgp-encrypted | inode/x-empty | application/octet-stream | \
+	application/x-gettext-translation )
+		"${EDITOR:-nvim}" $fx
+	;;
+	(image/x-*)
+		dem "${IMAGE_EDITOR:-gimp}" $fx
+	;;
+	(image/* )
+		case "$(tty)" in
+		("/dev/tty"*)
+			"${MPV:-mpv}" --keep-open $fx
+		;;
+		(*) dem "${IMAGE_VIEWER:-vimiv}" $fx
+		esac
+	;;
+	(audio/*)
+		case "$(tty)" in
+		("/dev/tty"*)
+			"${AUDIO_PLAYER:-"${MPV:-mpv}"}" --audio-display=no $fx
+		;;
+		(*) dem "${TERMINAL:-foot}" -e "${AUDIO_PLAYER:-"${MPV:-mpv}"}" --audio-display=no $fx
+		esac
+	;;
+	(video/*)
+		case "$(tty)" in
+		("/dev/tty"*)
+			"${VIDEO_PLAYER:-"${MPV:-mpv}"}" $fx
+		;;
+		(*) dem "${VIDEO_PLAYER:-"${MPV:-mpv}"}" $fx
+		esac
+	;;
+	(application/vnd.sqlite3)
+		sqlite3 $fx
+	;;
+	(application/zip)
+		case "${f##*.}" in
+		(kra) dem krita $f ;;
+		(*)
+			for f in $fx; do
+				"${OPENER:-xdg-open}" $f
+			done
+		esac
+	;;
+	(*)
+		case "$f" in
+		( *.tar.bz | *.tar.bz2 | *.tbz | \
+		*.tbz2 | *.tar.gz | *.tgz | *.tar.lzma | \
+		*.tar.xz | *.txz | *.zip | *.rar | *.iso)
+			mntdir="$f-archivemount"
+			if ! [ -d "$mntdir" ]; then
+				mkdir -- "$mntdir"
+				archivemount "$f" "$mntdir"
+				printf -- "%s\n" "$mntdir" >> "/tmp/__lf_archivemount_$id"
+			fi
+			lf -remote "send $id cd '$mntdir'"
+			lf -remote "send $id reload"
+		;;
+		esac
+
+		for f in $fx; do
+			dem "${OPENER:-xdg-open}" $f
+		done
+		;;
+	esac
+}}
+
+cmd openwith ${{
+
+	dem() {
+		{ setsid -f "$@" >/dev/null 2>&1& } \
+			|| ({ nohup "$@" >/dev/null 2>&1& } &) \
+			|| (exec "$@" >/dev/null 2>&1&)
+	}
+
+	real_f="$(readlink -f $f || realpath $f)" \
+	mime_type="$(\
+		exiftool -s3 -MIMEType "$real_f" \
+			|| file --dereference -b --mime-type -- "$real_f"
+	)"
+
+	menu_select() {
+		nl -nln | fzf --with-nth 2.. | cut -d' ' -f1
+	}
+
+	case "$mime_type" in
+	( text/* | application/json | application/javascript | \
+	application/pgp-encrypted | inode/x-empty | application/octet-stream )
+		app=$(menu_select <<-\EOF
+		$EDITOR
+		$EDITOR (new terminal)
+		nano
+		nano (new terminal)
+		EOF
+		)
+		case "$app" in
+		(1) "${EDITOR:-nvim}" $fx ;;
+		(2) dem "${TERMINAL:-foot}" -e "$EDITOR" $fx ;;
+		(3) nano $fx ;;
+		(4) dem "${TERMINAL:-foot}" -e nano $fx ;;
+		esac
+	;;
+
+	(image/svg+xml | image/png | image/jpeg | image/gif )
+		app=$(menu_select <<-\EOF
+		vimiv
+		gimp
+		mpv
+		krita
+		inkscape
+		EOF
+		)
+		case "$app" in
+		(1) dem vimiv $fx ;;
+		(2) dem gimp $fx ;;
+		(3)
+			case "$(tty)" in
+			("/dev/tty"*) "${MPV:-mpv}" --keep-open=yes $fx ;;
+			(*) dem "${MPV:-mpv}" --keep-open=yes $fx ;;
+			esac
+		;;
+		(4) dem krita $fx ;;
+		(5) dem inkscape $fx ;;
+		esac
+	;;
+
+	(image/x-*)
+		app=$(menu_select <<-\EOF
+		gimp
+		vimiv
+		mpv
+		EOF
+		)
+		case "$app" in
+		(1) dem gimp $fx ;;
+		(2) dem vimiv $fx ;;
+		(3)
+			case "$(tty)" in
+			("/dev/tty"*) "${MPV:-mpv}" --keep-open=yes $fx ;;
+			(*) dem "${MPV:-mpv}" --keep-open=yes $fx ;;
+			esac
+			;;
+		esac
+	;;
+
+	(audio/*)
+		app=$(menu_select <<-\EOF
+		mpv (force terminal)
+		mpv (background)
+		mpv (background, only audio)
+		mpv (foreground)
+		mpv (foreground, only audio)
+		mpv (force window)
+		EOF
+		)
+		case "$app" in
+		(1) dem "${TERMINAL:-foot}" -e "$MPV" --audio-display=no $fx ;;
+		(2) dem "${MPV:-mpv}" $fx ;;
+		(3) dem "${MPV:-mpv}" --audio-display=no $fx ;;
+		(4) "${MPV:-mpv}" $fx ;;
+		(5) echo; "${MPV:-mpv}" --audio-display=no $fx ;;
+		(6) dem "${MPV:-mpv}" --force-window $fx ;;
+		esac
+	;;
+
+	(video/*)
+		app=$(menu_select <<-\EOF
+		mpv
+		mpv (background, only audio)
+		mpv (foreground, only audio)
+		kdenlive
+		EOF
+		)
+		case "$app" in
+		(1) dem "${MPV:-mpv}" $fx ;;
+		(2) dem "${MPV:-mpv}" --video=no --audio-display=no $fx ;;
+		(3) echo; "${MPV:-mpv}" --video=no --audio-display=no $fx ;;
+		(4) dem "${VIDEO_EDITOR:-kdenlive}" $fx ;;
+		esac
+	esac
+}}
+
+%test $LF_LEVEL -eq 1 || >&2 printf "Warning: You're in a nested lf instance!"
+
+cmd mkdir $mkdir -p "$(echo $* | tr ' ' '\ ')"
+cmd trash %trash-put $fx
+
+cmd delete ${{
+	clear; tput cup $(($(tput lines)/3)); tput bold
+	set -f
+	printf -- "%s\n" $fx | sed 's|'"$HOME"'||'
+	printf "\t\033[1;33mRemove? \033[37m[\033[32my\033[37m/\033[31mN\033[37m]\033[m "
+	read -r REPLY
+	case "$REPLY" in
+		[yY]) rm -rf -- $fx ;;
+	esac
+}}
+
+cmd chmodx &{{
+	chmod u+x $fx
+	lf -remote "send $id reload"
+}}
+
+cmd shred ${{
+	clear; tput cup $(($(tput lines)/3)); tput bold
+	set -f
+	printf -- "%s\n" $fx | sed 's|'"$HOME"'||'
+	printf "\t\033[1;34mShred? \033[37m[\033[32my\033[37m/\033[31mN\033[37m]\033[m "
+	read -r REPLY
+	case "$REPLY" in
+		[yY])
+			for f in $fx; do
+				if [ -f "$f" ]; then
+					shred -u -n 3 "$f" >/dev/null 2>&1 &
+				elif [ -d "$f" ]; then
+					rshred -fdu "$f"
+				fi
+			done
+		;;
+	esac
+}}
+
+cmd extract ${{
+	clear; tput cup $(($(tput lines)/3)); tput bold
+	set -f
+	printf -- "%s\n" $fx
+	printf "\t\033[1;34mExtract? \033[37m[\033[32my\033[37m/\033[31mN\033[37m]\033[m "
+	read -r REPLY
+	case "$REPLY" in
+		[yY]) aunpack $fx ;;
+	esac
+}}
+
+cmd moveto ${{
+	clear; tput cup $(($(tput lines)/3)); tput bold
+	set -f
+	clear
+	echo "Move to where?"
+	if dest="$(sed -e 's/\s*#.*//' -e '/^$/d' -e 's/^\S*\s*//' "${XDG_CONFIG_HOME:-"$HOME/.config"}/shell/bm-dirs" \
+			| fzf \
+			| sed 's|~|$HOME|'
+		)"
+	then
+		for x in $fx; do
+			eval mv -iv \"$x\" \"$dest\"
+		done &&
+			notify-send "lf" "File(s) moved to $dest"
+	fi
+}}
+
+cmd copyto ${{
+	clear; tput cup $(($(tput lines)/3)); tput bold
+	set -f
+	clear
+	echo "Copy to where?"
+	dest="$(sed -e 's/\s*#.*//' -e '/^$/d' -e 's/^\S*\s*//' "${XDG_CONFIG_HOME:-"$HOME/.config"}/shell/bm-dirs" \
+		| fzf \
+		| sed 's|~|$HOME|')" &&
+	for x in $fx; do
+		eval cp -ivr \"$x\" \"$dest\"
+	done &&
+	notify-send "lf" "File(s) copied to $dest"
+}}
+
+cmd broot ${{
+	selected="$(broot)"
+	if [ -d "$selected" ]; then
+		lf -remote "send ${id} cd \"${selected}\""
+	elif [ -e "$selected" ]; then
+		lf -remote "send ${id} select \"${selected}\""
+	else
+		>&2 printf "Could not select %s\n" "${selected}"
+	fi
+}}
+
+cmd paste_link %{{
+	IFS='
+'
+	set -- $(cat ~/.local/share/lf/files)
+	mode="$1"
+	shift
+	if [ $# -lt 1 ]; then
+		lf -remote "send $id echo no files to link"
+		exit 1
+	fi
+	case "$mode" in
+		copy) ln -sr -t . -- "$@";;
+		move) ln -t . -- "$@";;
+	esac \
+		|| exit $?
+	rm ~/.local/share/lf/files
+	lf -remote "send clear"
+}}
+
+cmd follow_link %{{
+	lf -remote "send ${id} select \"$(readlink $f)\""
+}}
+
+cmd zlua %{{
+	lf -remote "send ${id} cd \"$(z.lua -e $*)\""
+}}
+
+cmd zlua_i ${{
+	dir=$(z.lua -l "$@" \
+		| fzf --nth 2.. --tac +s -e \
+			--header "Directorios frecientes" --header-first \
+			--preview "lsd --color always --icon never --tree --depth 3 --group-dirs first {+2} 2>/dev/null" \
+		| awk '{print substr($0, index($0,$2))}'
+	)
+	lf -remote "send ${id} cd \"${dir}\""
+}}
+
+cmd gsh %{{
+	lf -remote "send ${id} cd \"$(g.sh -x $*)\""
+}}
+
+cmd gsh_fuzzy %{{
+	lf -remote "send ${id} cd \"$(_GS_GREP='fzf -f' g.sh -l $* | awk 'NR==1{print $2}')\""
+}}
+
+cmd gsh_i ${{
+	selected=$(g.sh -l "$@" \
+		| fzf --nth 2.. --tac +s -e \
+		--header "Directorios marcados" --header-first \
+		--preview "lsd --color always --icon never --tree --depth 2 --group-dirs first {+2} 2>/dev/null" \
+		| awk '{print substr($0, index($0,$2))}'
+	)
+	if [ -d "$selected" ]; then
+		lf -remote "send ${id} cd \"${selected}\""
+	elif [ -e "$selected" ]; then
+		lf -remote "send ${id} select \"${selected}\""
+	else
+		>&2 printf "Could not select %s\n" "${selected}"
+	fi
+}}
+
+cmd stop ${{
+	kill -TSTP $(ps -p $$ -o 'ppid=')
+}}
+
+cmd setbg "$1"
+
+map h updir
+map j down
+map k up
+map l open
+map L openwith
+map { half-up
+map } half-down
+map <c-n> down
+map <c-p> up
+
+map f
+map f1 $lf -remote "send $id select \"$(ffd -p --depth 1 +m)\""
+map f2 $lf -remote "send $id select \"$(ffd -p --depth 2 +m)\""
+map f3 $lf -remote "send $id select \"$(ffd -p --depth 3 +m)\""
+map ff broot
+map F  $lf -remote "send $id select \"$(ffd -p +m)\""
+map -  search
+map _  search-back
+map zf find
+map zF find-back
+
+map rg $lf -remote "send $id select \"$(rgfzf -p)\""
+map rG $lf -remote "send $id select \"$(rgfzf -p --depth 1)\""
+map rf $lf -remote "send $id select \"$(rgfzf -dp)\""
+map rF $lf -remote "send $id select \"$(rgfzf -dp --depth 1)\""
+map ra $lf -remote "send $id select \"$(rgfzf -dp --rg=rga --depth 1 -s 0.3)\""
+map rA $lf -remote "send $id select \"$(rgfzf -dp --rg=rga -s 0.8)\""
+
+map Km maps
+map Kc cmaps
+map d
+map dd cut
+map D delete
+map <a-d> trash
+map <a-D> shred
+map E extract
+map P paste_link
+map <a-n> push :mkdir<space>
+map <a-t> push $touch<space>
+map <a-r> reload
+map <enter> shell
+map x $$f
+map X !$f
+map <a-x> chmodx
+map <a-X> $setbg $f
+map C &compila $f
+map <a-c> $compila -ir $f
+map o &mimeopen $f
+map O $mimeopen --ask $f
+map U glob-unselect *
+map <a-u> glob-select *
+
+map z<space> push :zlua<space>
+map <a-z> zlua_i
+map <a-g> gsh_i
+map zo zlua_i
+map g<space> push :gsh<space>
+map gf push :gsh_fuzzy<space>
+map go gsh_i
+map gl follow_link
+map gr cd /
+map gt cd /tmp
+map gs $lf -remote "send $id cd \"$SCRIPTS\""
+map J jumps
+
+cmd drag_all &ls -Ah --zero | xargs -d'\0' dragon-drag-and-drop 2>/dev/null
+cmd drag_allx &ls -Ah --zero | xargs -d'\0' dragon-drag-and-drop -a -x 2>/dev/null
+
+map dl drag_all
+map dL drag_allx  
+map ds &dragon-drag-and-drop $fx
+map dS &dragon-drag-and-drop -a -x $fx
+map dm &drag mv "$PWD"
+map dc &drag cp "$PWD"
+map dw &drag wget "$PWD"
+
+cmap <tab> cmd-menu-complete
+cmap <backtab> cmd-menu-complete-back
+cmap <a-h> cmd-left
+cmap <a-l> cmd-right
+cmap <a-e> cmd-escape
+cmap <a-I> cmd-home
+cmap <a-A> cmd-end
+cmap <a-,> cmd-delete
+
+map c
+map r
+map i rename
+map A push i<a-A>
+map cc push i<a-A><c-u>
+map I push i<c-a>
+map a push i<a-A><a-b>
+map b $vidir 
+map B $find | vidir -
+
+map V push $"$EDITOR"<space>
+
+map <c-z> stop
+
+map W &{ nohup "${TERMINAL:-foot}" >/dev/null 2>&1& }
+
+map Y $printf "%s" "$fx" | wl-copy
+
+map cb &fondo-awesome $f

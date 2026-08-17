@@ -1,0 +1,238 @@
+
+vim.g.mapleader = " "
+vim.g.maplocalleader = " "
+
+vim.g.loaded_perl_provider = 0
+vim.g.loaded_ruby_provider = 0
+vim.g.loaded_node_provider = 0
+vim.g.loaded_python3_provider = 0
+
+local opt = vim.opt
+opt.number = true
+opt.relativenumber = true
+opt.mouse = "a"
+opt.clipboard = "unnamedplus"
+opt.breakindent = true
+opt.undofile = true
+opt.ignorecase = true
+opt.smartcase = true
+opt.signcolumn = "yes"
+opt.updatetime = 250
+opt.timeoutlen = 300
+opt.splitright = true
+opt.splitbelow = true
+opt.list = true
+opt.listchars = { tab = "» ", trail = "·", nbsp = "␣" }
+opt.inccommand = "split"
+opt.cursorline = true
+opt.scrolloff = 8
+opt.expandtab = true
+opt.shiftwidth = 2
+opt.tabstop = 2
+opt.winborder = "single"
+
+vim.api.nvim_create_autocmd("TextYankPost", {
+  desc = "Highlight yanked text",
+  group = vim.api.nvim_create_augroup("kickstart-highlight-yank", { clear = true }),
+  callback = function()
+    vim.hl.on_yank()
+  end,
+})
+
+local map = vim.keymap.set
+
+map("n", "<Esc>", "<cmd>nohlsearch<CR>", { desc = "Clear search highlight" })
+map("n", "<C-h>", "<C-w><C-h>", { desc = "Move to left window" })
+map("n", "<C-l>", "<C-w><C-l>", { desc = "Move to right window" })
+map("n", "<C-j>", "<C-w><C-j>", { desc = "Move to window below" })
+map("n", "<C-k>", "<C-w><C-k>", { desc = "Move to window above" })
+map("n", "<leader>e", "<cmd>Explore<CR>", { desc = "Open file explorer (netrw)" })
+map("v", "<", "<gv", { desc = "Indent left, stay in visual mode" })
+map("v", ">", ">gv", { desc = "Indent right, stay in visual mode" })
+map("n", "<leader>bd", "<cmd>bdelete<CR>", { desc = "Close buffer" })
+
+local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
+if not (vim.uv or vim.loop).fs_stat(lazypath) then
+  local out = vim.fn.system({
+    "git", "clone", "--filter=blob:none",
+    "https://github.com/folke/lazy.nvim.git",
+    "--branch=stable", lazypath,
+  })
+  if vim.v.shell_error ~= 0 then
+    vim.api.nvim_echo({ { "Failed to clone lazy.nvim:\n", "ErrorMsg" }, { out, "WarningMsg" } }, true, {})
+    vim.fn.getchar()
+    os.exit(1)
+  end
+end
+vim.opt.rtp:prepend(lazypath)
+
+require("lazy").setup({
+
+  {
+    "folke/tokyonight.nvim",
+    priority = 1000,
+    config = function()
+      vim.cmd.colorscheme("tokyonight-night")
+    end,
+  },
+
+  {
+    "echasnovski/mini.nvim",
+    config = function()
+      require("mini.statusline").setup()
+      require("mini.pairs").setup()
+      require("mini.comment").setup()
+      require("mini.surround").setup()
+      require("mini.icons").setup()
+    end,
+  },
+
+  {
+    "nvim-telescope/telescope.nvim",
+    branch = "0.1.x",
+    dependencies = {
+      "nvim-lua/plenary.nvim",
+      { "nvim-telescope/telescope-fzf-native.nvim", build = "make" },
+    },
+    keys = {
+      { "<leader>ff", "<cmd>Telescope find_files<CR>", desc = "Find files" },
+      { "<leader>fg", "<cmd>Telescope live_grep<CR>", desc = "Grep project" },
+      { "<leader>fb", "<cmd>Telescope buffers<CR>", desc = "Find open buffers" },
+      { "<leader>fh", "<cmd>Telescope help_tags<CR>", desc = "Search nvim help" },
+      { "<leader>fd", "<cmd>Telescope diagnostics<CR>", desc = "Search LSP diagnostics" },
+      { "<leader>fr", "<cmd>Telescope oldfiles<CR>", desc = "Recently opened files" },
+    },
+    config = function()
+      require("telescope").setup({})
+      pcall(require("telescope").load_extension, "fzf")
+    end,
+  },
+
+  {
+    "nvim-treesitter/nvim-treesitter",
+    branch = "master",
+    build = ":TSUpdate",
+    event = { "BufReadPost", "BufNewFile" },
+    opts = {
+      ensure_installed = {
+        "bash", "c", "diff", "html", "css", "javascript", "typescript", "tsx",
+        "json", "lua", "luadoc", "markdown", "markdown_inline", "python",
+        "query", "regex", "rust", "go", "yaml", "toml", "vim", "vimdoc",
+      },
+      auto_install = true,
+      highlight = { enable = true },
+      indent = { enable = true },
+    },
+    config = function(_, opts)
+      require("nvim-treesitter.configs").setup(opts)
+    end,
+  },
+
+  {
+    "lewis6991/gitsigns.nvim",
+    event = { "BufReadPre", "BufNewFile" },
+    opts = {
+      signs = {
+        add = { text = "+" },
+        change = { text = "~" },
+        delete = { text = "_" },
+      },
+    },
+  },
+
+  {
+    "folke/which-key.nvim",
+    event = "VeryLazy",
+    opts = {},
+  },
+
+  {
+    "stevearc/conform.nvim",
+    event = { "BufWritePre" },
+    cmd = { "ConformInfo" },
+    keys = {
+      { "<leader>lf", function() require("conform").format({ async = true }) end, desc = "Format buffer" },
+    },
+    opts = {
+      notify_on_error = false,
+      format_on_save = { timeout_ms = 500, lsp_format = "fallback" },
+      formatters_by_ft = {
+        lua = { "stylua" },
+        python = { "black" },
+        javascript = { "prettierd", "prettier", stop_after_first = true },
+        typescript = { "prettierd", "prettier", stop_after_first = true },
+        json = { "prettierd", "prettier", stop_after_first = true },
+        sh = { "shfmt" },
+      },
+    },
+  },
+
+  {
+    "neovim/nvim-lspconfig",
+    dependencies = {
+      { "williamboman/mason.nvim", opts = {} },
+      "williamboman/mason-lspconfig.nvim",
+      "saghen/blink.cmp",
+    },
+    config = function()
+      local servers = {
+        lua_ls = {
+          settings = { Lua = { diagnostics = { globals = { "vim" } } } },
+        },
+        pyright = {},
+        ts_ls = {},
+        bashls = {},
+        jsonls = {},
+        html = {},
+        cssls = {},
+      }
+
+      require("mason-lspconfig").setup({
+        ensure_installed = vim.tbl_keys(servers),
+        automatic_enable = true,
+      })
+
+      local capabilities = require("blink.cmp").get_lsp_capabilities()
+      for name, cfg in pairs(servers) do
+        vim.lsp.config(name, vim.tbl_deep_extend("force", { capabilities = capabilities }, cfg))
+      end
+
+      vim.api.nvim_create_autocmd("LspAttach", {
+        group = vim.api.nvim_create_augroup("kickstart-lsp-attach", { clear = true }),
+        callback = function(event)
+          local nmap = function(keys, func, desc)
+            vim.keymap.set("n", keys, func, { buffer = event.buf, desc = "LSP: " .. desc })
+          end
+          nmap("gd", vim.lsp.buf.definition, "Go to definition")
+          nmap("gr", vim.lsp.buf.references, "Find references")
+          nmap("gI", vim.lsp.buf.implementation, "Go to implementation")
+          nmap("K", vim.lsp.buf.hover, "Hover info")
+          nmap("<leader>rn", vim.lsp.buf.rename, "Rename")
+          nmap("<leader>ca", vim.lsp.buf.code_action, "Code action")
+          nmap("<leader>D", vim.lsp.buf.type_definition, "Type definition")
+        end,
+      })
+
+      vim.diagnostic.config({
+        virtual_text = { prefix = "●" },
+        severity_sort = true,
+      })
+    end,
+  },
+
+  {
+    "saghen/blink.cmp",
+    version = "*",
+    dependencies = { "rafamadriz/friendly-snippets" },
+    opts = {
+      keymap = { preset = "default" },
+      appearance = { nerd_font_variant = "mono" },
+      sources = { default = { "lsp", "path", "snippets", "buffer" } },
+      signature = { enabled = true },
+    },
+  },
+
+}, {
+  ui = { border = "single" },
+  rocks = { enabled = false },
+})

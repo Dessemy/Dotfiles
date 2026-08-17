@@ -1,0 +1,14 @@
+#!/bin/sh
+CONF="vpn"
+
+if ip link show "$CONF" >/dev/null 2>&1; then
+    sudo -n wg-quick down "$CONF"
+    notify-send -i network-vpn-disconnected "VPN" "Disconnected"
+else
+    if sudo -n wg-quick up "$CONF" 2>/tmp/vpn_err; then
+        notify-send -i network-vpn "VPN" "Connected"
+    else
+        notify-send -u critical "VPN" "Connection failed:
+$(cat /tmp/vpn_err)"
+    fi
+fi

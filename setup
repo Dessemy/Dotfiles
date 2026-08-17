@@ -1,0 +1,717 @@
+#!/bin/bash
+set -e
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+info()  { echo -e "${GREEN}[INFO]${NC} $1"; }
+warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
+error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
+[ "$(id -u)" -eq 0 ] || error "Run as root."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_DIRS=(dwl foot fastfetch rmpc mako nvim qutebrowser scripts lf)
+THEME_NAME="tokyonight"
+THEME_FONT="FiraCode Nerd Font Propo Bold 15"
+info "Clearing resolv.conf flag"
+chattr -i /etc/resolv.conf 2>/dev/null || true
+info "Installing parted"
+pacman -Sy --noconfirm parted
+if [ -d /sys/firmware/efi/efivars ]; then
+    BOOT_MODE="uefi"
+else
+    BOOT_MODE="bios"
+fi
+info "Boot mode: $BOOT_MODE"
+echo
+lsblk -d -o NAME,SIZE,MODEL
+echo
+read -rp "Target disk (e.g. /dev/sda or /dev/nvme0n1): " DISK
+[ -b "$DISK" ] || error "Disk not found."
+read -rp "Hostname [artix]: " HOSTNAME
+HOSTNAME=${HOSTNAME:-artix}
+read -rp "New username [user]: " USERNAME
+USERNAME=${USERNAME:-user}
+while true; do
+    read -rsp "Root password: " ROOT_PASS; echo
+    read -rsp "Confirm root password: " ROOT_PASS2; echo
+    [ "$ROOT_PASS" = "$ROOT_PASS2" ] && [ -n "$ROOT_PASS" ] && break
+    warn "Mismatch, retry."
+done
+while true; do
+    read -rsp "Password for ${USERNAME}: " USER_PASS; echo
+    read -rsp "Confirm password for ${USERNAME}: " USER_PASS2; echo
+    [ "$USER_PASS" = "$USER_PASS2" ] && [ -n "$USER_PASS" ] && break
+    warn "Mismatch, retry."
+done
+read -rp "Timezone [Asia/Jakarta]: " TIMEZONE
+TIMEZONE=${TIMEZONE:-Asia/Jakarta}
+read -rp "EFI partition size in MiB [512]: " EFI_SIZE
+EFI_SIZE=${EFI_SIZE:-512}
+echo
+warn "ALL DATA on $DISK will be ERASED!"
+read -rp "Type 'YES' to continue: " CONFIRM
+[ "$CONFIRM" = "YES" ] || error "Aborted."
+info "Running unattended"
+exec < /dev/null
+info "Partitioning $DISK"
+if [[ "$DISK" == *"nvme"* || "$DISK" == *"mmcblk"* ]]; then
+    PART_PREFIX="${DISK}p"
+else
+    PART_PREFIX="${DISK}"
+fi
+info "Cleaning leftovers"
+swapoff -a 2>/dev/null || true
+umount -R /mnt 2>/dev/null || true
+for part in "${PART_PREFIX}"*; do
+    [ -b "$part" ] && umount -f "$part" 2>/dev/null || true
+done
+wipefs -af "$DISK"
+partprobe "$DISK" 2>/dev/null || true
+sleep 1
+parted -s "$DISK" mklabel gpt
+if [ "$BOOT_MODE" = "uefi" ]; then
+    parted -s "$DISK" mkpart EFI fat32 1MiB "${EFI_SIZE}MiB"
+    parted -s "$DISK" set 1 esp on
+    parted -s "$DISK" mkpart ROOT ext4 "${EFI_SIZE}MiB" 100%
+    EFI_PART="${PART_PREFIX}1"
+    ROOT_PART="${PART_PREFIX}2"
+else
+    parted -s "$DISK" mkpart BIOSBOOT 1MiB 2MiB
+    parted -s "$DISK" set 1 bios_grub on
+    parted -s "$DISK" mkpart ROOT ext4 2MiB 100%
+    ROOT_PART="${PART_PREFIX}2"
+fi
+for i in 1 2 3 4 5; do
+    partprobe "$DISK" 2>/dev/null && break
+    sleep 2
+done
+udevadm settle 2>/dev/null || true
+sleep 2
+wait_for_blockdev() {
+    dev="$1"
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        [ -b "$dev" ] && return 0
+        partprobe "$DISK" 2>/dev/null || true
+        partx -u "$DISK" 2>/dev/null || true
+        udevadm settle 2>/dev/null || true
+        sleep 1
+    done
+    return 1
+}
+info "Partition layout:"
+lsblk "$DISK" 2>/dev/null || true
+ls -la "${PART_PREFIX}"* 2>/dev/null || true
+wait_for_blockdev "$ROOT_PART" || error "$ROOT_PART not found."
+info "Wiping $ROOT_PART"
+wipefs -af "$ROOT_PART" 2>/dev/null || true
+info "Formatting root"
+mkfs.ext4 -F "$ROOT_PART"
+if [ "$BOOT_MODE" = "uefi" ]; then
+    wait_for_blockdev "$EFI_PART" || error "$EFI_PART not found."
+    info "Wiping $EFI_PART"
+    wipefs -af "$EFI_PART" 2>/dev/null || true
+    info "Formatting EFI"
+    mkfs.fat -F32 "$EFI_PART"
+fi
+info "Mounting"
+mount "$ROOT_PART" /mnt
+if [ "$BOOT_MODE" = "uefi" ]; then
+    mkdir -p /mnt/boot/efi
+    mount "$EFI_PART" /mnt/boot/efi
+fi
+mkdir -p /mnt/root/dotfiles-src
+for dir in "${CONFIG_DIRS[@]}"; do
+    if [ -d "$SCRIPT_DIR/$dir" ]; then
+        cp -r "$SCRIPT_DIR/$dir" /mnt/root/dotfiles-src/
+        info "Staged: $dir"
+    else
+        warn "Missing: $dir"
+    fi
+done
+if [ -f "$SCRIPT_DIR/bash/.bashrc" ] && [ -f "$SCRIPT_DIR/bash/starship.toml" ]; then
+    cp "$SCRIPT_DIR/bash/.bashrc" /mnt/root/dotfiles-src/dot-bashrc
+    cp "$SCRIPT_DIR/bash/starship.toml" /mnt/root/dotfiles-src/starship.toml
+    info "Staged: bash"
+else
+    warn "Missing: bash dotfiles"
+fi
+if [ -d "$SCRIPT_DIR/dwl" ]; then
+    cp -r "$SCRIPT_DIR/dwl" /mnt/root/dwl-src
+    info "Staged: dwl"
+else
+    warn "Missing: dwl source"
+fi
+if [ -d "$SCRIPT_DIR/$THEME_NAME" ]; then
+    cp -r "$SCRIPT_DIR/$THEME_NAME" /mnt/root/theme-src
+    info "Staged: theme"
+else
+    warn "Missing: theme"
+fi
+info "Syncing mirrors"
+sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 5/' /etc/pacman.conf 2>/dev/null || true
+pacman -Syy --noconfirm || true
+info "Running basestrap"
+BASESTRAP_PKGS="base base-devel elogind-runit dbus-runit linux linux-firmware linux-headers linux-zen linux-zen-headers \
+    git wget curl rsync unzip zip tar reflector sudo bash-completion tree less pciutils usbutils \
+    pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber alsa-utils \
+    iwd iwd-runit iproute2 inetutils openssh openssh-runit openresolv \
+    grub efibootmgr ntfs-3g dosfstools e2fsprogs exfatprogs \
+    bluez bluez-utils bluez-runit mpd"
+BASESTRAP_OK=0
+for i in 1 2 3; do
+    if basestrap /mnt $BASESTRAP_PKGS; then
+        BASESTRAP_OK=1
+        break
+    fi
+    warn "basestrap failed, retry $i"
+    pacman -Syy --noconfirm || true
+    sleep 3
+done
+[ "$BASESTRAP_OK" -eq 1 ] || error "basestrap failed."
+info "Generating fstab"
+fstabgen -U /mnt >> /mnt/etc/fstab
+info "Configuring system"
+cat > /mnt/root/chroot-setup.sh <<EOF
+#!/bin/bash
+set -e
+
+enable_svc() {
+    if [ -d "/etc/runit/sv/\$1" ]; then
+        ln -sf "/etc/runit/sv/\$1" /etc/runit/runsvdir/default/
+    else
+        echo "WARNING: service \$1 not found, skip"
+    fi
+}
+
+make_svc() {
+    mkdir -p "/etc/runit/sv/\$1"
+    cat > "/etc/runit/sv/\$1/run"
+    chmod +x "/etc/runit/sv/\$1/run"
+    enable_svc "\$1"
+}
+
+echo "root:${ROOT_PASS}" | chpasswd
+
+ln -sf /usr/share/zoneinfo/${TIMEZONE} /etc/localtime
+hwclock --systohc
+
+sed -i 's/#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
+locale-gen
+echo "LANG=en_US.UTF-8" > /etc/locale.conf
+
+echo "${HOSTNAME}" > /etc/hostname
+cat >> /etc/hosts <<HOSTS
+127.0.0.1   localhost
+::1         localhost
+127.0.1.1   ${HOSTNAME}.localdomain ${HOSTNAME}
+HOSTS
+
+useradd -m -G wheel -s /bin/bash "${USERNAME}"
+echo "${USERNAME}:${USER_PASS}" | chpasswd
+
+echo "Configuring sudo"
+mkdir -p /etc/sudoers.d
+cat > /etc/sudoers.d/10-wheel <<'SUDOERS'
+%wheel ALL=(ALL:ALL) ALL
+Defaults env_keep += "HOME"
+SUDOERS
+chmod 0440 /etc/sudoers.d/10-wheel
+visudo -cf /etc/sudoers.d/10-wheel || { echo "ERROR: sudoers validation failed"; exit 1; }
+
+echo "Adding Arch repos"
+pacman -S --noconfirm artix-archlinux-support
+pacman-key --populate archlinux
+
+cat > /etc/pacman.d/mirrorlist-arch <<'MIRRORLIST'
+Server = https://geo.mirror.pkgbuild.com/\$repo/os/\$arch
+MIRRORLIST
+
+reflector --country Indonesia,Singapore,Japan --age 12 --protocol https --completion-percent 100 --sort rate \
+    >> /etc/pacman.d/mirrorlist-arch 2>/dev/null \
+    || reflector --age 24 --protocol https --completion-percent 100 --latest 20 --sort rate \
+    >> /etc/pacman.d/mirrorlist-arch 2>/dev/null \
+    || true
+
+if ! grep -q '^\[extra\]' /etc/pacman.conf; then
+cat >> /etc/pacman.conf <<PACMANCONF
+
+[extra]
+Include = /etc/pacman.d/mirrorlist-arch
+
+[multilib]
+Include = /etc/pacman.d/mirrorlist-arch
+PACMANCONF
+fi
+
+pacman -Syy --noconfirm || echo "WARNING: pacman sync issues, continuing."
+
+echo "Installing dotfiles"
+mkdir -p /home/${USERNAME}/.config
+if [ -d /root/dotfiles-src ]; then
+    for dir in /root/dotfiles-src/*/; do
+        [ -d "\$dir" ] || continue
+        dname=\$(basename "\$dir")
+        cp -r "\$dir" "/home/${USERNAME}/.config/\$dname"
+        echo "  \$dname"
+    done
+    chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.config
+
+    if [ -d "/home/${USERNAME}/.config/scripts" ]; then
+        chmod -R +x "/home/${USERNAME}/.config/scripts"
+    fi
+fi
+
+if [ -f /root/dotfiles-src/dot-bashrc ]; then
+    cp /root/dotfiles-src/dot-bashrc "/home/${USERNAME}/.bashrc"
+fi
+if [ -f /root/dotfiles-src/starship.toml ]; then
+    cp /root/dotfiles-src/starship.toml "/home/${USERNAME}/.config/starship.toml"
+fi
+rm -rf /root/dotfiles-src
+
+cat > /home/${USERNAME}/.bash_profile <<'BASHPROFILE'
+[[ -f "\$HOME/.bashrc" ]] && source "\$HOME/.bashrc"
+BASHPROFILE
+chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.bashrc /home/${USERNAME}/.bash_profile
+
+if ! grep -q 'exec dbus-run-session.*startdwl' "/home/${USERNAME}/.bashrc" 2>/dev/null; then
+    echo "WARNING: no dwl autostart in .bashrc"
+fi
+
+mkdir -p /etc/iwd
+cat >> /etc/iwd/main.conf <<IWD
+[General]
+EnableNetworkConfiguration=true
+
+[Network]
+NameResolvingService=resolvconf
+IWD
+
+mkdir -p /etc/runit/runsvdir/default
+enable_svc dbus
+enable_svc iwd
+enable_svc bluetoothd
+
+usermod -aG audio,video,lp,storage "${USERNAME}"
+
+echo "Creating home directories"
+mkdir -p \
+    "/home/${USERNAME}/Music" \
+    "/home/${USERNAME}/Downloads" \
+    "/home/${USERNAME}/Pictures/Wallpapers" \
+    "/home/${USERNAME}/.local/share/mpd" \
+    "/home/${USERNAME}/.cache/wal" \
+    "/home/${USERNAME}/.config/mpd" \
+    "/home/${USERNAME}/.config/aria2"
+
+if [ ! -f "/home/${USERNAME}/.config/mpd/mpd.conf" ]; then
+    cat > "/home/${USERNAME}/.config/mpd/mpd.conf" <<MPDCONF
+music_directory     "~/Music"
+db_file             "~/.local/share/mpd/database"
+sticker_file        "~/.local/share/mpd/sticker.sql"
+
+bind_to_address     "127.0.0.1"
+auto_update         "yes"
+
+input {
+        plugin "curl"
+}
+
+audio_output {
+    type "pipewire"
+    name "Pipewire Sound Server"
+}
+MPDCONF
+fi
+
+if [ ! -f "/home/${USERNAME}/.config/aria2/aria2.conf" ]; then
+    touch "/home/${USERNAME}/.config/aria2/aria2.session"
+    cat > "/home/${USERNAME}/.config/aria2/aria2.conf" <<ARIA2CONF
+dir=/home/${USERNAME}/Downloads
+enable-rpc=true
+rpc-listen-all=false
+rpc-listen-port=6800
+rpc-allow-origin-all=true
+continue=true
+max-connection-per-server=16
+split=16
+min-split-size=1M
+max-concurrent-downloads=5
+auto-file-renaming=false
+daemon=false
+input-file=/home/${USERNAME}/.config/aria2/aria2.session
+save-session=/home/${USERNAME}/.config/aria2/aria2.session
+save-session-interval=60
+ARIA2CONF
+fi
+
+if ! grep -q 'pgrep -x aria2c' "/home/${USERNAME}/.bashrc" 2>/dev/null; then
+    cat >> "/home/${USERNAME}/.bashrc" <<'ARIA2AUTOSTART'
+
+pgrep -x aria2c >/dev/null || aria2c --conf-path="\$HOME/.config/aria2/aria2.conf" -D
+ARIA2AUTOSTART
+fi
+
+if ! grep -q '.local/bin' "/home/${USERNAME}/.bashrc" 2>/dev/null; then
+    cat >> "/home/${USERNAME}/.bashrc" <<'LOCALBINPATH'
+
+export PATH="\$HOME/.local/bin:\$PATH"
+LOCALBINPATH
+fi
+
+echo "Writing terminal colors"
+printf '\033]10;#c0caf5\033\\\\\033]11;#1a1b26\033\\\\\033]12;#c0caf5\033\\\\\033]4;0;#1a1b26\033\\\\\033]4;1;#f7768e\033\\\\\033]4;2;#9ece6a\033\\\\\033]4;3;#e0af68\033\\\\\033]4;4;#7aa2f7\033\\\\\033]4;5;#bb9af7\033\\\\\033]4;6;#7dcfff\033\\\\\033]4;7;#a9b1d6\033\\\\\033]4;8;#414868\033\\\\\033]4;9;#f7768e\033\\\\\033]4;10;#9ece6a\033\\\\\033]4;11;#e0af68\033\\\\\033]4;12;#7aa2f7\033\\\\\033]4;13;#bb9af7\033\\\\\033]4;14;#7dcfff\033\\\\\033]4;15;#c0caf5\033\\\\' > "/home/${USERNAME}/.cache/wal/sequences"
+
+echo "Detecting GPU"
+GPU_INFO=\$(lspci -nnk | grep -Ei "VGA compatible controller|3D controller|Display controller")
+echo "\$GPU_INFO"
+
+GPU_COUNT=\$(echo "\$GPU_INFO" | grep -Eic "VGA compatible controller|3D controller")
+HAS_NVIDIA=0; HAS_INTEL=0; HAS_AMD=0
+echo "\$GPU_INFO" | grep -qi nvidia   && HAS_NVIDIA=1
+echo "\$GPU_INFO" | grep -qi intel    && HAS_INTEL=1
+echo "\$GPU_INFO" | grep -Eqi "amd|ati|radeon" && HAS_AMD=1
+
+GPU_PKGS="mesa vulkan-icd-loader lib32-mesa lib32-vulkan-icd-loader"
+[ "\$HAS_NVIDIA" -eq 1 ] && GPU_PKGS="\$GPU_PKGS nvidia-dkms nvidia-utils nvidia-settings opencl-nvidia lib32-nvidia-utils lib32-opencl-nvidia"
+[ "\$HAS_INTEL" -eq 1 ]  && GPU_PKGS="\$GPU_PKGS vulkan-intel intel-media-driver libva-intel-driver lib32-vulkan-intel"
+[ "\$HAS_AMD" -eq 1 ]    && GPU_PKGS="\$GPU_PKGS xf86-video-amdgpu vulkan-radeon libva-mesa-driver lib32-vulkan-radeon lib32-mesa"
+
+for pkg in \$GPU_PKGS; do
+    pacman -S --needed --noconfirm "\$pkg" || echo "WARNING: \$pkg failed"
+done
+
+if [ "\$HAS_NVIDIA" -eq 1 ]; then
+    echo "Nvidia setup"
+
+    if grep -q 'GRUB_CMDLINE_LINUX_DEFAULT=' /etc/default/grub; then
+        if ! grep -q 'nvidia_drm.modeset=0' /etc/default/grub; then
+            sed -i 's/^\(GRUB_CMDLINE_LINUX_DEFAULT="[^"]*\)"/\1 nvidia_drm.modeset=0"/' /etc/default/grub
+        fi
+    else
+        echo 'GRUB_CMDLINE_LINUX_DEFAULT="nvidia_drm.modeset=0"' >> /etc/default/grub
+    fi
+
+    if grep -q '^MODULES=()' /etc/mkinitcpio.conf; then
+        sed -i 's/^MODULES=()/MODULES=(nvidia nvidia_modeset nvidia_uvm nvidia_drm)/' /etc/mkinitcpio.conf
+    elif grep -q '^MODULES=(' /etc/mkinitcpio.conf && ! grep -q 'nvidia_drm' /etc/mkinitcpio.conf; then
+        sed -i '/^MODULES=(/ s/)\$/ nvidia nvidia_modeset nvidia_uvm nvidia_drm)/' /etc/mkinitcpio.conf
+    fi
+
+    echo "options nvidia NVreg_PreserveVideoMemoryAllocations=1 NVreg_EnableGpuFirmware=0 NVreg_DynamicPowerManagement=0x02" > /etc/modprobe.d/nvidia-power.conf
+
+    mkinitcpio -P || echo "WARNING: mkinitcpio failed"
+fi
+
+if [ "\$GPU_COUNT" -ge 2 ] && [ "\$HAS_NVIDIA" -eq 1 ]; then
+    echo "hybrid-nvidia" > /root/.gpu-mode
+elif [ "\$GPU_COUNT" -ge 2 ]; then
+    echo "hybrid-other" > /root/.gpu-mode
+else
+    echo "single" > /root/.gpu-mode
+fi
+
+if [ -d /root/dwl-src ]; then
+    echo "Installing dwl deps"
+    pacman -S --needed --noconfirm wayland wayland-protocols pkgconf libxkbcommon libinput pixman fcft tllist wlroots0.19 wlr-randr libxcb xcb-util-wm \
+        || echo "WARNING: dwl deps failed"
+
+    echo "Building dwl"
+    cd /root/dwl-src
+    WPROTO_DIR="\$(pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)"
+    if [ -n "\$WPROTO_DIR" ] && grep -q 'staging/cursor-shape' Makefile 2>/dev/null \
+       && [ ! -f "\$WPROTO_DIR/staging/cursor-shape/cursor-shape-v1.xml" ] \
+       && [ -f "\$WPROTO_DIR/stable/cursor-shape/cursor-shape-v1.xml" ]; then
+        sed -i 's#staging/cursor-shape#stable/cursor-shape#g' Makefile
+    fi
+    cd /root
+    if ! ( cd /root/dwl-src && make clean install ) 2>&1 | tee /root/dwl-build.log; then
+        echo "ERROR: dwl build failed, log at /root/dwl-build.log"
+        exit 1
+    fi
+
+    if [ -d /root/dwl-src/slstatus ]; then
+        echo "Building slstatus"
+        ( cd /root/dwl-src/slstatus && make clean install ) \
+            || echo "WARNING: slstatus build failed"
+    fi
+
+    command -v dwl >/dev/null 2>&1 || { echo "ERROR: dwl not found on PATH"; exit 1; }
+    echo "dwl installed: \$(command -v dwl)"
+
+    rm -rf /root/dwl-src
+else
+    echo "ERROR: dwl source missing, aborting"
+    exit 1
+fi
+
+echo "Setting up temp sudo"
+cat > /etc/sudoers.d/20-wheel-nopass <<'SUDOERS'
+%wheel ALL=(ALL:ALL) NOPASSWD: ALL
+SUDOERS
+chmod 0440 /etc/sudoers.d/20-wheel-nopass
+visudo -cf /etc/sudoers.d/20-wheel-nopass || { echo "ERROR: sudoers validation failed"; exit 1; }
+
+su - "${USERNAME}" -c "cd ~ && git clone https://aur.archlinux.org/yay-bin.git && cd yay-bin && makepkg -si --noconfirm" \
+    || echo "WARNING: yay install failed"
+rm -rf "/home/${USERNAME}/yay-bin"
+
+if [ -f /root/.gpu-mode ] && [ "\$(cat /root/.gpu-mode)" = "hybrid-nvidia" ]; then
+    echo "Hybrid Nvidia, installing envycontrol"
+
+    echo "Installing systemctl stub"
+    cat > /usr/local/bin/systemctl <<'SYSTEMCTL_STUB'
+#!/bin/bash
+case "$1" in
+    is-active)
+        echo "inactive"
+        exit 3
+        ;;
+    is-enabled)
+        echo "disabled"
+        exit 1
+        ;;
+    status)
+        echo "○ $2 - not running (runit system, systemctl is a no-op stub)"
+        exit 3
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+SYSTEMCTL_STUB
+    chmod +x /usr/local/bin/systemctl
+
+    su - "${USERNAME}" -c "yay -S --needed --noconfirm envycontrol" \
+        || echo "WARNING: envycontrol install failed"
+    echo "NOTE: 'sudo envycontrol -s integrated|nvidia|hybrid' then reboot."
+elif [ -f /root/.gpu-mode ] && [ "\$(cat /root/.gpu-mode)" = "hybrid-other" ]; then
+    echo "Dual GPU, no Nvidia, skipping GPU switcher"
+fi
+rm -f /root/.gpu-mode
+
+echo "Preparing dwl package list"
+cat > /home/${USERNAME}/dwl-install.sh <<'DWLSCRIPT'
+#!/bin/bash
+DWL_PKGS="foot mako cliphist swaybg seatd seatd-runit xorg-xwayland
+ttf-firacode-nerd noto-fonts noto-fonts-cjk noto-fonts-emoji bc neovim htop
+starship zoxide fastfetch eza ffmpeg 7zip aria2 python-pip wiremix mpv rmpc
+nwg-look dconf gsettings-desktop-schemas qutebrowser
+wireguard-tools grim slurp nodejs npm waylock brightnessctl playerctl libnotify tlp tlp-runit
+xdg-desktop-portal-no-systemd-rtkit xdg-desktop-portal-wlr qt5-wayland qt6-wayland"
+lf bat chafa jq perl-image-exiftool fzf ripgrep fd wl-clipboard lsd lynx poppler imagemagick
+atool gnupg man-db trash-cli librsvg odt2txt catdoc sqlite moreutils ffmpegthumbnailer
+
+for pkg in \$DWL_PKGS; do
+    yay -S --needed --noconfirm "\$pkg" \
+        || echo "WARNING: failed to install \$pkg, skipping."
+done
+
+echo "Installing aria2p"
+pip install "aria2p[tui]" --break-system-packages --user \
+    || echo "WARNING: aria2p install failed"
+DWLSCRIPT
+chown ${USERNAME}:${USERNAME} /home/${USERNAME}/dwl-install.sh
+chmod +x /home/${USERNAME}/dwl-install.sh
+
+su - "${USERNAME}" -c /home/${USERNAME}/dwl-install.sh
+rm -f /home/${USERNAME}/dwl-install.sh
+
+echo "Creating /etc/wireguard"
+mkdir -p /etc/wireguard
+chmod 700 /etc/wireguard
+
+echo "Configuring VPN sudo"
+WG_QUICK_BIN="\$(command -v wg-quick || echo /usr/bin/wg-quick)"
+cat > /etc/sudoers.d/30-vpn <<SUDOERS
+%wheel ALL=(root) NOPASSWD: \${WG_QUICK_BIN} up *, \${WG_QUICK_BIN} down *
+SUDOERS
+chmod 0440 /etc/sudoers.d/30-vpn
+visudo -cf /etc/sudoers.d/30-vpn \
+    || echo "WARNING: sudoers validation failed"
+
+echo "Configuring resolvconf sudo"
+RESOLVCONF_BIN="\$(command -v resolvconf || echo /usr/bin/resolvconf)"
+cat > /etc/sudoers.d/31-resolvconf <<SUDOERS
+%wheel ALL=(root) NOPASSWD: \${RESOLVCONF_BIN} -u
+SUDOERS
+chmod 0440 /etc/sudoers.d/31-resolvconf
+visudo -cf /etc/sudoers.d/31-resolvconf \
+    || echo "WARNING: sudoers validation failed"
+
+if [ -d /root/theme-src ]; then
+    echo "Installing theme"
+    mkdir -p "/home/${USERNAME}/.local/share/themes"
+    cp -r /root/theme-src "/home/${USERNAME}/.local/share/themes/${THEME_NAME}"
+    chown -R ${USERNAME}:${USERNAME} "/home/${USERNAME}/.local/share"
+    rm -rf /root/theme-src
+
+    su - "${USERNAME}" -c "dbus-run-session -- bash -c '
+        gsettings set org.gnome.desktop.interface gtk-theme \"${THEME_NAME}\" &&
+        gsettings set org.gnome.desktop.interface color-scheme \"prefer-dark\" &&
+        gsettings set org.gnome.desktop.interface font-name \"${THEME_FONT}\"
+    '" || echo "WARNING: gsettings failed"
+
+    su - "${USERNAME}" -c "dbus-run-session -- nwg-look -x" \
+        || echo "WARNING: nwg-look export failed"
+
+    echo "Theme applied: ${THEME_NAME}"
+else
+    echo "WARNING: theme not staged"
+fi
+
+su - "${USERNAME}" -c 'src=\$(mktemp -d) \
+    && git clone --recursive --depth 1 https://github.com/akinomyoga/ble.sh.git "\$src" \
+    && make -C "\$src" install PREFIX="\$HOME/.local" \
+    && rm -rf "\$src"' \
+    || echo "WARNING: ble.sh install failed"
+
+rm -f /etc/sudoers.d/20-wheel-nopass
+
+echo "Enabling seatd"
+enable_svc seatd
+usermod -aG seat "${USERNAME}"
+
+echo "Enabling tlp"
+enable_svc tlp
+
+echo "Setting up USB auto-mount"
+cat > /usr/local/bin/usb-automount <<'AUTOMOUNT'
+#!/bin/bash
+ACTION="\$1"
+DEV="\$2"
+DEVNODE="/dev/\$DEV"
+MOUNT_POINT="/media/\$DEV"
+TARGET_USER="${USERNAME}"
+TARGET_UID="\$(id -u "\$TARGET_USER" 2>/dev/null || echo 1000)"
+TARGET_GID="\$(id -g "\$TARGET_USER" 2>/dev/null || echo 1000)"
+
+case "\$ACTION" in
+add)
+    mkdir -p "\$MOUNT_POINT"
+    FSTYPE="\$(blkid -o value -s TYPE "\$DEVNODE" 2>/dev/null)"
+    case "\$FSTYPE" in
+        vfat)
+            mount -t vfat -o uid="\$TARGET_UID",gid="\$TARGET_GID",utf8,dmask=022,fmask=133 "\$DEVNODE" "\$MOUNT_POINT"
+            ;;
+        exfat)
+            mount -t exfat -o uid="\$TARGET_UID",gid="\$TARGET_GID" "\$DEVNODE" "\$MOUNT_POINT"
+            ;;
+        ntfs)
+            ntfs-3g -o uid="\$TARGET_UID",gid="\$TARGET_GID" "\$DEVNODE" "\$MOUNT_POINT"
+            ;;
+        *)
+            mount "\$DEVNODE" "\$MOUNT_POINT"
+            chown "\$TARGET_UID":"\$TARGET_GID" "\$MOUNT_POINT"
+            ;;
+    esac
+    ;;
+remove)
+    umount "\$MOUNT_POINT" 2>/dev/null
+    rmdir "\$MOUNT_POINT" 2>/dev/null
+    ;;
+esac
+AUTOMOUNT
+chmod +x /usr/local/bin/usb-automount
+
+cat > /etc/udev/rules.d/99-usb-automount.rules <<'UDEVRULES'
+KERNEL=="sd[a-z][0-9]", SUBSYSTEMS=="usb", ACTION=="add", RUN+="/usr/local/bin/usb-automount add %k"
+KERNEL=="sd[a-z][0-9]", SUBSYSTEMS=="usb", ACTION=="remove", RUN+="/usr/local/bin/usb-automount remove %k"
+UDEVRULES
+
+echo "Setting up zram swap"
+make_svc zram <<'ZRAMSV'
+#!/bin/sh
+modprobe zram num_devices=1 2>/dev/null || true
+for i in 1 2 3 4 5; do [ -e /sys/block/zram0 ] && break; sleep 1; done
+echo zstd > /sys/block/zram0/comp_algorithm 2>/dev/null || true
+ZRAM_SIZE=$(awk '/MemTotal/{printf "%dM", $2/1024/2}' /proc/meminfo)
+echo "$ZRAM_SIZE" > /sys/block/zram0/disksize
+mkswap /dev/zram0 >/dev/null 2>&1
+swapon -p 100 /dev/zram0
+exec sv down zram
+ZRAMSV
+
+echo "pm_async off"
+make_svc pm-async-off <<'PMASYNC'
+#!/bin/sh
+echo 0 > /sys/power/pm_async 2>/dev/null
+exec sv down pm-async-off
+PMASYNC
+
+echo "Setting up mpd/aria2c as runit services"
+make_svc mpd-user <<MPDSV
+#!/bin/sh
+export HOME=/home/${USERNAME}
+export XDG_RUNTIME_DIR=/run/user/$(id -u ${USERNAME})
+exec chpst -u ${USERNAME}:${USERNAME} mpd --no-daemon /home/${USERNAME}/.config/mpd/mpd.conf
+MPDSV
+
+make_svc aria2c-user <<ARIA2SV
+#!/bin/sh
+export HOME=/home/${USERNAME}
+exec chpst -u ${USERNAME}:${USERNAME} aria2c --conf-path=/home/${USERNAME}/.config/aria2/aria2.conf --daemon=false
+ARIA2SV
+
+echo "Configuring GRUB"
+sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=0/' /etc/default/grub
+if grep -q '^GRUB_TIMEOUT_STYLE=' /etc/default/grub; then
+    sed -i 's/^GRUB_TIMEOUT_STYLE=.*/GRUB_TIMEOUT_STYLE=hidden/' /etc/default/grub
+else
+    echo 'GRUB_TIMEOUT_STYLE=hidden' >> /etc/default/grub
+fi
+if grep -q '^GRUB_DEFAULT=' /etc/default/grub; then
+    sed -i 's/^GRUB_DEFAULT=.*/GRUB_DEFAULT=saved/' /etc/default/grub
+else
+    echo 'GRUB_DEFAULT=saved' >> /etc/default/grub
+fi
+if grep -q '^GRUB_SAVEDEFAULT=' /etc/default/grub; then
+    sed -i 's/^GRUB_SAVEDEFAULT=.*/GRUB_SAVEDEFAULT=true/' /etc/default/grub
+else
+    echo 'GRUB_SAVEDEFAULT=true' >> /etc/default/grub
+fi
+if grep -q '^GRUB_DISABLE_SUBMENU=' /etc/default/grub; then
+    sed -i 's/^GRUB_DISABLE_SUBMENU=.*/GRUB_DISABLE_SUBMENU=true/' /etc/default/grub
+else
+    echo 'GRUB_DISABLE_SUBMENU=true' >> /etc/default/grub
+fi
+
+if [ -d /sys/firmware/efi/efivars ]; then
+    grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=Artix
+else
+    grub-install --target=i386-pc ${DISK}
+fi
+grub-mkconfig -o /boot/grub/grub.cfg
+
+echo "Fixing home ownership"
+chown -R ${USERNAME}:${USERNAME} "/home/${USERNAME}"
+
+echo "Cleanup"
+rm -f /root/dwl-build.log
+rm -rf /root/dwl-src /root/dotfiles-src /root/theme-src
+su - "${USERNAME}" -c "yay -Sc --noconfirm" 2>/dev/null || true
+rm -rf "/home/${USERNAME}/.cache/yay"
+find "/home/${USERNAME}" -maxdepth 1 \( -name "*.pkg.tar.*" -o -name "yay-bin" -o -name "ble.sh*" \) -exec rm -rf {} + 2>/dev/null || true
+pacman -Scc --noconfirm 2>/dev/null || true
+rm -f /etc/runit/runsvdir/default/NetworkManager 2>/dev/null || true
+pkill NetworkManager 2>/dev/null || true
+pacman -Qi networkmanager >/dev/null 2>&1 && { pacman -Rns --noconfirm networkmanager || true; }
+rm -f /etc/resolv.conf 2>/dev/null || true
+EOF
+chmod +x /mnt/root/chroot-setup.sh
+info "Copying DNS config"
+mkdir -p /mnt/etc
+if [ ! -s /etc/resolv.conf ]; then
+    warn "Empty resolv.conf, using fallback DNS."
+    printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > /etc/resolv.conf
+fi
+rm -f /mnt/etc/resolv.conf 2>/dev/null || true
+cp -L /etc/resolv.conf /mnt/etc/resolv.conf || error "resolv.conf copy failed."
+[ -s /mnt/etc/resolv.conf ] || error "resolv.conf empty, check network."
+artix-chroot /mnt /root/chroot-setup.sh
+rm /mnt/root/chroot-setup.sh
+info "Installation complete!"
+echo
+echo "For Wi-Fi after reboot, use: iwctl"
+echo
+info "Rebooting in 5 seconds ..."
+sleep 5
+umount -R /mnt
+reboot

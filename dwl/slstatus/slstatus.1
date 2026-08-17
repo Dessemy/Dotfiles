@@ -1,0 +1,64 @@
+.Dd August 9, 2026
+.Dt SLSTATUS 1
+.Os
+.Sh NAME
+.Nm slstatus
+.Nd suckless status
+.Sh SYNOPSIS
+.Nm
+.Op Fl v
+.Op Fl s
+.Op Fl 1
+.Sh DESCRIPTION
+.Nm
+reports system status, either via the root window's WM_NAME (default,
+for
+.Xr dwm 1 )
+or over stdout.
+For
+.Xr dwl 1 Ns 's
+built-in bar:
+.Bd -literal -offset indent
+slstatus -s | dwl
+.Ed
+.Sh OPTIONS
+.Bl -tag -width Ds -compact
+.It Fl v
+Print version, exit.
+.It Fl s
+Write to stdout instead of WM_NAME.
+.It Fl 1
+Write once to stdout, exit.
+.El
+.Sh CUSTOMIZATION
+Edit
+.Va args[]
+in
+.Pa config.h
+and recompile; see
+.Pa components/
+for available functions.
+Each entry is
+.Sy { function, format, argument } ,
+format being a
+.Xr printf 3
+string.
+.Pp
+For
+.Xr dwl 1 Ns 's
+bar
+.Pq Fl s ,
+format strings may embed
+.Sq \&|
+to split segments and ANSI SGR color codes; see
+.Xr dwl 1 .
+.Sh SIGNALS
+.Bl -tag -width TERM -compact
+.It USR1
+Instant redraw.
+.El
+.Sh AUTHORS
+See LICENSE.
+.Sh SEE ALSO
+.Xr dwm 1 ,
+.Xr dwl 1
