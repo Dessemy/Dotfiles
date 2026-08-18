@@ -1,3 +1,0 @@
-#!/bin/sh
-[ -f "$HOME/.cache/wal/sequences" ] && cat "$HOME/.cache/wal/sequences"
-exec aria2p top
