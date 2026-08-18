@@ -3,6 +3,7 @@ set hidden!
 set hiddenfiles ".*:*.aux:*.log:*.bbl:*.bcf:*.blg:*.run.xml"
 set previewer '~/.config/scripts/previewer'
 set incsearch
+map <esc> unselect
 set incfilter
 set ratios 2:3:4
 set truncatechar "~"
@@ -39,7 +40,7 @@ cmd open ${{
 
 	case "$mime_type" in
 	(application/pdf | application/postscript | image/vnd.djvu |  application/epub*)
-		dem "${READER:-zathura}" $fx
+		dem xdg-open $fx
 	;;
 	(text/html)
 		case "${f##*.}" in
@@ -59,14 +60,14 @@ cmd open ${{
 		"${EDITOR:-nvim}" $fx
 	;;
 	(image/x-*)
-		dem "${IMAGE_EDITOR:-gimp}" $fx
+		dem "${IMAGE_VIEWER:-imv}" $fx
 	;;
 	(image/* )
 		case "$(tty)" in
 		("/dev/tty"*)
 			"${MPV:-mpv}" --keep-open $fx
 		;;
-		(*) dem "${IMAGE_VIEWER:-gimp}" $fx
+		(*) dem "${IMAGE_VIEWER:-imv}" $fx
 		esac
 	;;
 	(audio/*)
@@ -85,12 +86,8 @@ cmd open ${{
 		(*) dem "${VIDEO_PLAYER:-"${MPV:-mpv}"}" $fx
 		esac
 	;;
-	(application/vnd.sqlite3)
-		sqlite3 $fx
-	;;
 	(application/zip)
 		case "${f##*.}" in
-		(kra) dem krita $f ;;
 		(*)
 			for f in $fx; do
 				"${OPENER:-xdg-open}" $f
@@ -154,33 +151,29 @@ cmd openwith ${{
 
 	(image/svg+xml | image/png | image/jpeg | image/gif )
 		app=$(menu_select <<-\EOF
-		gimp
+		imv
 		mpv
-		krita
-		inkscape
 		EOF
 		)
 		case "$app" in
-		(1) dem gimp $fx ;;
+		(1) dem imv $fx ;;
 		(2)
 			case "$(tty)" in
 			("/dev/tty"*) "${MPV:-mpv}" --keep-open=yes $fx ;;
 			(*) dem "${MPV:-mpv}" --keep-open=yes $fx ;;
 			esac
 		;;
-		(3) dem krita $fx ;;
-		(4) dem inkscape $fx ;;
 		esac
 	;;
 
 	(image/x-*)
 		app=$(menu_select <<-\EOF
-		gimp
+		imv
 		mpv
 		EOF
 		)
 		case "$app" in
-		(1) dem gimp $fx ;;
+		(1) dem imv $fx ;;
 		(2)
 			case "$(tty)" in
 			("/dev/tty"*) "${MPV:-mpv}" --keep-open=yes $fx ;;
@@ -192,21 +185,13 @@ cmd openwith ${{
 
 	(audio/*)
 		app=$(menu_select <<-\EOF
-		mpv (force terminal)
 		mpv (background)
-		mpv (background, only audio)
-		mpv (foreground)
 		mpv (foreground, only audio)
-		mpv (force window)
 		EOF
 		)
 		case "$app" in
-		(1) dem "${TERMINAL:-foot}" -e "$MPV" --audio-display=no $fx ;;
-		(2) dem "${MPV:-mpv}" $fx ;;
-		(3) dem "${MPV:-mpv}" --audio-display=no $fx ;;
-		(4) "${MPV:-mpv}" $fx ;;
-		(5) echo; "${MPV:-mpv}" --audio-display=no $fx ;;
-		(6) dem "${MPV:-mpv}" --force-window $fx ;;
+		(1) dem "${MPV:-mpv}" $fx ;;
+		(2) echo; "${MPV:-mpv}" --audio-display=no $fx ;;
 		esac
 	;;
 
@@ -215,14 +200,12 @@ cmd openwith ${{
 		mpv
 		mpv (background, only audio)
 		mpv (foreground, only audio)
-		kdenlive
 		EOF
 		)
 		case "$app" in
 		(1) dem "${MPV:-mpv}" $fx ;;
 		(2) dem "${MPV:-mpv}" --video=no --audio-display=no $fx ;;
 		(3) echo; "${MPV:-mpv}" --video=no --audio-display=no $fx ;;
-		(4) dem "${VIDEO_EDITOR:-kdenlive}" $fx ;;
 		esac
 	esac
 }}
@@ -444,5 +427,3 @@ map <c-z> stop
 map W &{ nohup "${TERMINAL:-foot}" >/dev/null 2>&1& }
 
 map Y $printf "%s" "$fx" | wl-copy
-
-
