@@ -323,9 +323,11 @@ fi
 
 if [ ! -f "/home/${USERNAME}/.config/aria2/aria2.conf" ]; then
     touch "/home/${USERNAME}/.config/aria2/aria2.session"
+    ARIA2_SECRET="$(head -c 16 /dev/urandom | md5sum | cut -c1-16)"
     cat > "/home/${USERNAME}/.config/aria2/aria2.conf" <<ARIA2CONF
 dir=/home/${USERNAME}/Downloads
 enable-rpc=true
+rpc-secret=${ARIA2_SECRET}
 rpc-listen-all=false
 rpc-listen-port=6800
 rpc-allow-origin-all=true
@@ -340,6 +342,12 @@ input-file=/home/${USERNAME}/.config/aria2/aria2.session
 save-session=/home/${USERNAME}/.config/aria2/aria2.session
 save-session-interval=60
 ARIA2CONF
+    mkdir -p "/home/${USERNAME}/.config/aria2p"
+    cat > "/home/${USERNAME}/.config/aria2p/aria2p.conf" <<ARIA2PCONF
+[DEFAULT]
+port = 6800
+secret = ${ARIA2_SECRET}
+ARIA2PCONF
 fi
 
 if ! grep -q 'pgrep -x aria2c' "/home/${USERNAME}/.bashrc" 2>/dev/null; then
@@ -355,9 +363,6 @@ if ! grep -q '.local/bin' "/home/${USERNAME}/.bashrc" 2>/dev/null; then
 export PATH="\$HOME/.local/bin:\$PATH"
 LOCALBINPATH
 fi
-
-echo "Writing terminal colors"
-printf '\033]10;#c0caf5\033\\\\\033]11;#1a1b26\033\\\\\033]12;#c0caf5\033\\\\\033]4;0;#1a1b26\033\\\\\033]4;1;#f7768e\033\\\\\033]4;2;#9ece6a\033\\\\\033]4;3;#e0af68\033\\\\\033]4;4;#7aa2f7\033\\\\\033]4;5;#bb9af7\033\\\\\033]4;6;#7dcfff\033\\\\\033]4;7;#a9b1d6\033\\\\\033]4;8;#414868\033\\\\\033]4;9;#f7768e\033\\\\\033]4;10;#9ece6a\033\\\\\033]4;11;#e0af68\033\\\\\033]4;12;#7aa2f7\033\\\\\033]4;13;#bb9af7\033\\\\\033]4;14;#7dcfff\033\\\\\033]4;15;#c0caf5\033\\\\' > "/home/${USERNAME}/.cache/wal/sequences"
 
 echo "Detecting GPU"
 GPU_INFO=\$(lspci -nnk | grep -Ei "VGA compatible controller|3D controller|Display controller")
@@ -507,8 +512,12 @@ for pkg in \$DWL_PKGS; do
 done
 
 echo "Installing aria2p"
-pip install "aria2p[tui]" --break-system-packages --user \
-    || echo "WARNING: aria2p install failed"
+for i in 1 2; do
+    pip install "aria2p[tui]" --break-system-packages --user && break
+    echo "WARNING: aria2p install attempt \$i failed, retrying"
+done
+command -v aria2p >/dev/null 2>&1 || "\$HOME/.local/bin/aria2p" --help >/dev/null 2>&1 \
+    || echo "WARNING: aria2p still not found after install, check pip output above"
 DWLSCRIPT
 chown ${USERNAME}:${USERNAME} /home/${USERNAME}/dwl-install.sh
 chmod +x /home/${USERNAME}/dwl-install.sh
