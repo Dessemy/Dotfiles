@@ -95,6 +95,21 @@ alias grep='rg --color=auto'
 alias diff='diff --color=auto'
 alias df='df -h'
 
+alias rm='trash-put'
+alias trashlist='trash-list'
+alias trashempty='trash-empty'
+alias trashrestore='trash-restore'
+
+alias open='xdg-open'
+alias openwith='mimeopen -a'
+
+alias pbcopy='wl-copy'
+alias pbpaste='wl-paste'
+
+alias imgcat='chafa'
+
+alias drag='dragon-drag-and-drop'
+
 lf() {
   tmp=$(mktemp)
     command lf -last-dir-path="$tmp" "$@"
