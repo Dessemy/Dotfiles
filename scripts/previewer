@@ -119,10 +119,6 @@ mime_preview() {
 		(*) exiftool -j "$1" | jq -C
 		esac
 	;;
-	(application/vnd.sqlite3,0)
-		table=$(sqlite3 "$1" '.tables')
-		sqlite3 "$1" ".headers on" ".mode markdown" "select * from $table"
-		;;
 	(inode/directory,0)
 		entries=$(ls -1A --color=never -- "$1" 2>/dev/null)
 		if [ -n "$entries" ]; then
