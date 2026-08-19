@@ -118,7 +118,7 @@ static const Key keys[] = {
     { MODKEY,                              XKB_KEY_s,              spawn,            SHCMD("$HOME/.config/scripts/snip full") },
     { MODKEY|WLR_MODIFIER_CTRL,            XKB_KEY_s,              spawn,            SHCMD("$HOME/.config/scripts/snip area") },
 	{ MODKEY,                              XKB_KEY_Tab,            spawn,            SHCMD("foot -e $HOME/.config/scripts/launchr") },
-	{ MODKEY,                              XKB_KEY_u,              spawn,            SHCMD("foot -e aria2p top") },
+	{ MODKEY,                              XKB_KEY_u,              spawn,            SHCMD("foot -e aria2ptop") },
 	{ MODKEY,                              XKB_KEY_l,              spawn,            SHCMD("foot -e lf") },
 	{ MODKEY,                              XKB_KEY_r,              spawn,            SHCMD("foot -e rmpc") },
 	{ MODKEY,                              XKB_KEY_h,              spawn,            SHCMD("foot -e htop") },
