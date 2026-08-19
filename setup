@@ -700,8 +700,6 @@ fi
 rm -f /mnt/etc/resolv.conf 2>/dev/null || true
 cp -L /etc/resolv.conf /mnt/etc/resolv.conf || error "resolv.conf copy failed."
 [ -s /mnt/etc/resolv.conf ] || error "resolv.conf empty, check network."
-artix-chroot /mnt /root/chroot-setup.sh
-rm /mnt/root/chroot-setup.sh
 
 info "Copying Wi-Fi network profile"
 mkdir -p /mnt/var/lib/iwd
@@ -730,6 +728,9 @@ IWDPROFILE
 else
     warn "No saved NetworkManager Wi-Fi profile found on live system, skipping."
 fi
+
+artix-chroot /mnt /root/chroot-setup.sh
+rm /mnt/root/chroot-setup.sh
 
 info "Installation complete!"
 echo
