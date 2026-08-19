@@ -49,6 +49,20 @@ if ! command -v aria2p >/dev/null 2>&1 && [ ! -f "$ARIA2P_MARKER" ]; then
   touch "$ARIA2P_MARKER"
 fi
 
+ARIA2_CONF="$HOME/.config/aria2/aria2.conf"
+ARIA2P_CONF="$HOME/.config/aria2p/aria2p.conf"
+ARIA2_SECRET_MARKER="$XDG_STATE_HOME/aria2-secret-done"
+if [ -f "$ARIA2_CONF" ] && [ ! -f "$ARIA2_SECRET_MARKER" ]; then
+  mkdir -p "$(dirname "$ARIA2_SECRET_MARKER")"
+  SECRET="$(head -c 16 /dev/urandom | md5sum | cut -c1-16)"
+  sed -i '/^rpc-secret=/d' "$ARIA2_CONF"
+  echo "rpc-secret=${SECRET}" >> "$ARIA2_CONF"
+  mkdir -p "$(dirname "$ARIA2P_CONF")"
+  printf '[DEFAULT]\nport = 6800\nsecret = %s\n' "$SECRET" > "$ARIA2P_CONF"
+  sudo -n sv restart aria2c-user >/dev/null 2>&1
+  touch "$ARIA2_SECRET_MARKER"
+fi
+
 shopt -s autocd 2>/dev/null
 shopt -s checkwinsize
 shopt -s globstar 2>/dev/null
