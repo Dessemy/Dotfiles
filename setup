@@ -702,6 +702,35 @@ cp -L /etc/resolv.conf /mnt/etc/resolv.conf || error "resolv.conf copy failed."
 [ -s /mnt/etc/resolv.conf ] || error "resolv.conf empty, check network."
 artix-chroot /mnt /root/chroot-setup.sh
 rm /mnt/root/chroot-setup.sh
+
+info "Copying Wi-Fi network profile"
+mkdir -p /mnt/var/lib/iwd
+shopt -s nullglob
+nm_profiles=(/etc/NetworkManager/system-connections/*.nmconnection)
+shopt -u nullglob
+if [ "${#nm_profiles[@]}" -gt 0 ]; then
+    for conn in "${nm_profiles[@]}"; do
+        ssid="$(sed -n 's/^ssid=//p' "$conn" | head -n1)"
+        psk="$(sed -n 's/^psk=//p' "$conn" | head -n1)"
+        if [ -z "$ssid" ]; then
+            continue
+        fi
+        if [ -n "$psk" ]; then
+            cat > "/mnt/var/lib/iwd/${ssid}.psk" <<IWDPROFILE
+[Security]
+Passphrase=${psk}
+IWDPROFILE
+            chmod 600 "/mnt/var/lib/iwd/${ssid}.psk"
+        else
+            : > "/mnt/var/lib/iwd/${ssid}.open"
+            chmod 600 "/mnt/var/lib/iwd/${ssid}.open"
+        fi
+        info "Converted Wi-Fi profile for '${ssid}' to iwd format."
+    done
+else
+    warn "No saved NetworkManager Wi-Fi profile found on live system, skipping."
+fi
+
 info "Installation complete!"
 echo
 echo "For Wi-Fi after reboot, use: iwctl"
