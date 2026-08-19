@@ -40,6 +40,15 @@ shopt -s histappend
 shopt -s cmdhist
 PROMPT_COMMAND="history -a; ${PROMPT_COMMAND}"
 
+ARIA2P_MARKER="$XDG_STATE_HOME/aria2p-install-done"
+if ! command -v aria2p >/dev/null 2>&1 && [ ! -f "$ARIA2P_MARKER" ]; then
+  mkdir -p "$(dirname "$ARIA2P_MARKER")"
+  pip install "aria2p[tui]" --break-system-packages --user \
+    && echo "aria2p installed." \
+    || echo "WARNING: aria2p install failed, run manually: pip install aria2p[tui] --break-system-packages --user"
+  touch "$ARIA2P_MARKER"
+fi
+
 shopt -s autocd 2>/dev/null
 shopt -s checkwinsize
 shopt -s globstar 2>/dev/null
