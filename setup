@@ -323,14 +323,13 @@ fi
 
 if [ ! -f "/home/${USERNAME}/.config/aria2/aria2.conf" ]; then
     touch "/home/${USERNAME}/.config/aria2/aria2.session"
-    ARIA2_SECRET="$(head -c 16 /dev/urandom | md5sum | cut -c1-16)"
     cat > "/home/${USERNAME}/.config/aria2/aria2.conf" <<ARIA2CONF
 dir=/home/${USERNAME}/Downloads
 enable-rpc=true
-rpc-secret=${ARIA2_SECRET}
 rpc-listen-all=false
 rpc-listen-port=6800
 rpc-allow-origin-all=true
+quiet=true
 continue=true
 max-connection-per-server=16
 split=16
@@ -342,12 +341,6 @@ input-file=/home/${USERNAME}/.config/aria2/aria2.session
 save-session=/home/${USERNAME}/.config/aria2/aria2.session
 save-session-interval=60
 ARIA2CONF
-    mkdir -p "/home/${USERNAME}/.config/aria2p"
-    cat > "/home/${USERNAME}/.config/aria2p/aria2p.conf" <<ARIA2PCONF
-[DEFAULT]
-port = 6800
-secret = ${ARIA2_SECRET}
-ARIA2PCONF
 fi
 
 if ! grep -q '.local/bin' "/home/${USERNAME}/.bashrc" 2>/dev/null; then
