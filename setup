@@ -502,14 +502,6 @@ for pkg in \$DWL_PKGS; do
     yay -S --needed --noconfirm "\$pkg" \
         || echo "WARNING: failed to install \$pkg, skipping."
 done
-
-echo "Installing aria2p"
-for i in 1 2; do
-    pip install "aria2p[tui]" --break-system-packages --user && break
-    echo "WARNING: aria2p install attempt \$i failed, retrying"
-done
-command -v aria2p >/dev/null 2>&1 || "\$HOME/.local/bin/aria2p" --help >/dev/null 2>&1 \
-    || echo "WARNING: aria2p still not found after install, check pip output above"
 DWLSCRIPT
 chown ${USERNAME}:${USERNAME} /home/${USERNAME}/dwl-install.sh
 chmod +x /home/${USERNAME}/dwl-install.sh
