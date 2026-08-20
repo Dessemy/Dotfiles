@@ -101,8 +101,6 @@ _fzf_file_no_hidden() {
   READLINE_POINT=$((READLINE_POINT + ${#result}))
 }
 
-alias aria2ptop='aria2p --secret "$(grep "^rpc-secret=" "$HOME/.config/aria2/aria2.conf" | cut -d= -f2)" top'
-
 alias sdwl='dbus-run-session ~/.config/scripts/startdwl'
 
 alias cat='bat'
