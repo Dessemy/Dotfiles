@@ -43,9 +43,7 @@ PROMPT_COMMAND="history -a; ${PROMPT_COMMAND}"
 ARIA2P_MARKER="$XDG_STATE_HOME/aria2p-install-done"
 if ! command -v aria2p >/dev/null 2>&1 && [ ! -f "$ARIA2P_MARKER" ]; then
   mkdir -p "$(dirname "$ARIA2P_MARKER")"
-  pip install "aria2p[tui]" --break-system-packages --user \
-    && echo "aria2p installed." \
-    || echo "WARNING: aria2p install failed, run manually: pip install aria2p[tui] --break-system-packages --user"
+  pip install "aria2p[tui]" --break-system-packages --user || true
   touch "$ARIA2P_MARKER"
 fi
 
@@ -106,10 +104,6 @@ _fzf_file_no_hidden() {
 alias aria2ptop='aria2p --secret "$(grep "^rpc-secret=" "$HOME/.config/aria2/aria2.conf" | cut -d= -f2)" top'
 
 alias sdwl='dbus-run-session ~/.config/scripts/startdwl'
-alias ls='eza --icons'
-alias ll='eza -lh --icons --git'
-alias la='eza -lah --icons --git'
-alias tree='eza --tree --icons'
 
 alias cat='bat'
 
@@ -118,17 +112,9 @@ alias diff='diff --color=auto'
 alias df='df -h'
 
 alias rm='trash-put'
-alias trashlist='trash-list'
-alias trashempty='trash-empty'
-alias trashrestore='trash-restore'
 
 alias open='xdg-open'
 alias openwith='mimeopen -a'
-
-alias pbcopy='wl-copy'
-alias pbpaste='wl-paste'
-
-alias imgcat='chafa'
 
 alias drag='dragon-drag-and-drop'
 
@@ -165,10 +151,9 @@ BLE_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/blesh"
 _ble_install() {
   local src
   src="$(mktemp -d)"
-  echo "Installing ble.sh..."
   git clone --recursive --depth 1 https://github.com/akinomyoga/ble.sh.git "$src" \
     && make -C "$src" install PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}/.." \
-    || { echo "ERROR: failed to install ble.sh" >&2; return 1; }
+    || return 1
   rm -rf "$src"
 }
 
@@ -190,8 +175,5 @@ ble-update() {
     && make -C "$src" install PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}/.."
   rm -rf "$src"
 }
-
-export VIRTUAL_ENV_DISABLE_PROMPT=1
-eval "$(starship init bash)"
 
 [[ ${BLE_VERSION-} ]] && ble-attach
