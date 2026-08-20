@@ -249,7 +249,7 @@ mkdir -p \
     "/home/${USERNAME}/Downloads" \
     "/home/${USERNAME}/Pictures/Wallpapers" \
     "/home/${USERNAME}/.local/share/mpd" \
-    "/home/${USERNAME}/.cache/wal" \
+    "/home/${USERNAME}/.cache" \
     "/home/${USERNAME}/.config/mpd" \
     "/home/${USERNAME}/.config/aria2"
 
