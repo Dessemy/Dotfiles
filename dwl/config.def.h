@@ -142,7 +142,7 @@ static const Key keys[] = {
 	{ MODKEY,                              XKB_KEY_space,          cyclelayout,      {0} },
 	{ MODKEY|WLR_MODIFIER_SHIFT,           XKB_KEY_space,          togglefloating,   {0} },
 	{ MODKEY,                              XKB_KEY_e,              togglefullscreen, {0} },
-	{ MODKEY,                              XKB_KEY_a,              togglegaps,       {0} },
+	{ MODKEY,                              XKB_KEY_u,              togglegaps,       {0} },
 	{ MODKEY|WLR_MODIFIER_SHIFT,           XKB_KEY_B,              togglebar,        {0} },
 	{ MODKEY,                              XKB_KEY_Return,         zoom,             {0} },
 
