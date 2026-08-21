@@ -1,0 +1,7 @@
+#!/bin/sh
+SECRET="$(grep '^rpc-secret=' ~/.config/aria2/aria2.conf | cut -d= -f2)"
+curl -s http://localhost:6800/jsonrpc -d "{\"jsonrpc\":\"2.0\",\"id\":\"qb\",\"method\":\"aria2.addUri\",\"params\":[\"token:${SECRET}\",[\"$1\"]]}"
+
+if ! pgrep -f "aria2p.*top" >/dev/null 2>&1; then
+  foot --app-id aria2p_top -e sh -c "aria2p --secret \"${SECRET}\" top" &
+fi
