@@ -52,15 +52,11 @@ config.set(
 
 config.bind(
     ",d",
-    'hint links spawn --detach curl -s http://localhost:6800/jsonrpc '
-    '-d \'{"jsonrpc":"2.0","id":"qb","method":"aria2.addUri",'
-    '"params":[["{hint-url}"]]}\''
+    'hint links spawn --detach aria2add {hint-url}'
 )
 config.bind(
     ",D",
-    '--rapid hint links spawn --detach curl -s http://localhost:6800/jsonrpc '
-    '-d \'{"jsonrpc":"2.0","id":"qb","method":"aria2.addUri",'
-    '"params":[["{hint-url}"]]}\''
+    '--rapid hint links spawn --detach aria2add {hint-url}'
 )
 
 c.statusbar.widgets = ["url", "progress"]
