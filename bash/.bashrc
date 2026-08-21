@@ -126,6 +126,8 @@ lf() {
     fi
 }
 
+alias aria2ptop='aria2p --secret "$(grep "^rpc-secret=" "$HOME/.config/aria2/aria2.conf" | cut -d= -f2)" top'
+
 alias vim='nvim'
 
 alias glog='PAGER="less -F -X" git log'
