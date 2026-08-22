@@ -52,11 +52,11 @@ config.set(
 
 config.bind(
     ",d",
-    'hint links spawn --detach aria2add {hint-url}'
+    'hint links spawn --detach aria2-add {hint-url} {url}'
 )
 config.bind(
     ",D",
-    '--rapid hint links spawn --detach aria2add {hint-url}'
+    '--rapid hint links spawn --detach aria2-add {hint-url} {url}'
 )
 
 c.statusbar.widgets = ["url", "progress"]
