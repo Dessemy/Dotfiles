@@ -1,0 +1,221 @@
+#!/bin/sh
+set -e
+
+WMENU_OPTS="-i -N #1a1b26 -n #a9b1d6 -S #7aa2f7 -s #1a1b26"
+
+notify_power() {
+    command -v notify-send >/dev/null 2>&1 && \
+        notify-send -t 1800 "Power Mode" "$1"
+}
+
+set_refresh_rate() {
+    target="$1"
+    command -v wlr-randr >/dev/null 2>&1 || return 0
+
+    if [ "$target" = "lowest" ]; then
+        sync_state=disabled
+    else
+        sync_state=enabled
+    fi
+    set_adaptive_sync "$sync_state"
+
+    outputs=$(wlr-randr 2>/dev/null | awk '
+        /^[^[:space:]]/ { if (name != "" && enabled == "yes") print name; name=$1; enabled=""; next }
+        /^[[:space:]]+Enabled:/ { enabled=$2 }
+        END { if (name != "" && enabled == "yes") print name }
+    ')
+
+    for output in $outputs; do
+        current_line=$(wlr-randr 2>/dev/null | awk -v o="$output" '
+            $0 ~ "^" o "[[:space:]]" {inside=1; next}
+            inside && /^[^[:space:]]/ {exit}
+            inside && /current/ {print; exit}
+        ')
+
+        resolution=$(printf '%s\n' "$current_line" |
+            sed -nE 's/^[[:space:]]*([0-9]+x[0-9]+) px,.*/\1/p')
+        [ -n "$resolution" ] || continue
+
+        rates=$(wlr-randr 2>/dev/null | awk -v o="$output" -v r="$resolution" '
+            $0 ~ "^" o "[[:space:]]" {inside=1; next}
+            inside && /^[^[:space:]]/ {exit}
+            inside && $0 ~ ("^[[:space:]]+" r " px,") {
+                line=$0
+                sub(/^.*px,[[:space:]]*/, "", line)
+                sub(/[[:space:]]+Hz.*$/, "", line)
+                print line
+            }
+        ')
+
+        [ -n "$rates" ] || continue
+
+        if [ "$target" = "lowest" ]; then
+            rate=$(printf '%s\n' "$rates" | sort -n | head -n1)
+        else
+            rate=$(printf '%s\n' "$rates" | sort -n | tail -n1)
+        fi
+
+        [ -n "$rate" ] || continue
+
+        wlr-randr --output "$output" --mode "${resolution}@${rate}Hz" \
+            >/dev/null 2>&1 || \
+        wlr-randr --output "$output" --mode "${resolution}@${rate}" \
+            >/dev/null 2>&1 || true
+
+        mkdir -p "$HOME/.cache"
+        printf '%s %s@%sHz %s\n' "$output" "$resolution" "$rate" "$sync_state" \
+            > "$HOME/.cache/refresh-rate-state"
+    done
+}
+
+set_adaptive_sync() {
+    state="$1"
+    command -v wlr-randr >/dev/null 2>&1 || return 0
+
+    wlr-randr 2>/dev/null | awk '
+        /^[^[:space:]]/ { if (name != "" && enabled == "yes") print name; name=$1; enabled=""; next }
+        /^[[:space:]]+Enabled:/ { enabled=$2 }
+        END { if (name != "" && enabled == "yes") print name }
+    ' |
+        while read -r output; do
+            [ -n "$output" ] || continue
+            wlr-randr --output "$output" --adaptive-sync "$state" \
+                >/dev/null 2>&1 || true
+        done
+}
+
+set_gpu_mode() {
+    mode="$1"
+
+    command -v envycontrol >/dev/null 2>&1 || return 0
+
+    case "$mode" in
+        integrated) out=$(sudo envycontrol -s integrated 2>&1) ;;
+        hybrid)     out=$(sudo envycontrol -s hybrid 2>&1) ;;
+        nvidia)     out=$(sudo envycontrol -s nvidia 2>&1) ;;
+    esac
+
+    if [ $? -ne 0 ]; then
+        notify_power "GPU mode switch to $mode failed: $out"
+    fi
+}
+
+set_kernel() {
+    target="$1"
+    sudo test -f /boot/grub/grub.cfg || return 0
+
+    if [ "$target" = "zen" ]; then
+        pat="linux-zen"
+    else
+        pat="linux"
+    fi
+
+    id=$(sudo cat /boot/grub/grub.cfg 2>/dev/null | awk -v pat="$pat" -v q="'" '
+        /^menuentry / {
+            line = $0
+            n = 0
+            while ((i = index(line, q)) > 0) {
+                line = substr(line, i+1)
+                j = index(line, q)
+                if (j == 0) break
+                n++
+                tok[n] = substr(line, 1, j-1)
+                line = substr(line, j+1)
+            }
+            cur_title = tok[1]
+            cur_id = tok[n]
+            next
+        }
+        /^[[:space:]]*linux[[:space:]]+\/boot\/vmlinuz-/ {
+            if (cur_title !~ /fallback/ && $0 ~ ("vmlinuz-" pat "([[:space:]]|$)")) {
+                print cur_id
+                exit
+            }
+        }
+    ')
+
+    [ -n "$id" ] || return 0
+
+    sudo grub-set-default "$id" >/dev/null 2>&1 || true
+}
+
+set_tlp_persistent() {
+    code="$1"
+    sudo mkdir -p /etc/tlp.d
+    sudo tee /etc/tlp.d/90-power-mode-override.conf >/dev/null <<TLPCONF
+TLP_DEFAULT_MODE=$code
+TLP_PERSISTENT_DEFAULT=1
+TLPCONF
+}
+
+apply_power_mode() {
+    mode="$1"
+
+    case "$mode" in
+        Powersave)
+            sudo tlp power-saver || return 1
+            set_tlp_persistent SAV
+            set_refresh_rate lowest
+            set_gpu_mode integrated
+            set_kernel default
+            notify_power "Powersave — rebooting..."
+            ;;
+        Balanced)
+            sudo tlp balanced || return 1
+            set_tlp_persistent BAL
+            set_refresh_rate lowest
+            set_gpu_mode hybrid
+            set_kernel default
+            notify_power "Balanced — rebooting..."
+            ;;
+        Performance)
+            sudo tlp performance || return 1
+            set_tlp_persistent PRF
+            set_refresh_rate highest
+            set_gpu_mode nvidia
+            set_kernel zen
+            notify_power "Performance — rebooting..."
+            ;;
+        Ultrapowersave)
+            sudo tlp power-saver || return 1
+            set_tlp_persistent SAV
+            set_refresh_rate lowest
+            set_gpu_mode integrated
+            set_kernel default
+
+            sudo sh -c '
+                for f in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do
+                    [ -w "$f" ] && printf "%s" power > "$f" 2>/dev/null
+                done
+                for f in /sys/class/scsi_host/host*/link_power_management_policy; do
+                    [ -w "$f" ] && printf "%s" min_power > "$f" 2>/dev/null
+                done
+            ' || true
+
+            notify_power "Ultrapowersave — rebooting..."
+            ;;
+    esac
+
+    sleep 1
+    sudo reboot
+}
+
+if ! command -v tlp >/dev/null 2>&1; then
+    notify-send -u critical "Power Mode Error" "TLP is not installed"
+    exit 1
+fi
+
+if ! sudo -v; then
+    notify-send -u critical "Power Mode Error" "sudo authentication failed"
+    exit 1
+fi
+
+chosen=$(printf 'Performance\nBalanced\nPowersave\nUltrapowersave\n' | \
+    wmenu -l 4 -p "Power Mode>" $WMENU_OPTS)
+
+[ -z "$chosen" ] && exit 0
+
+apply_power_mode "$chosen" || {
+    notify-send -u critical "Power Mode Error" "Failed to apply $chosen"
+    exit 1
+}

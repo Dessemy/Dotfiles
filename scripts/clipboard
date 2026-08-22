@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+
+WMENU_OPTS="-i -N #1a1b26 -n #a9b1d6 -S #7aa2f7 -s #1a1b26"
+
+selected=$(cliphist list | wmenu -l 15 -p "Clipboard>" $WMENU_OPTS)
+[ -z "$selected" ] && exit 0
+
+printf '%s' "$selected" | cliphist decode | wl-copy
+command -v notify-send >/dev/null 2>&1 && notify-send "Clipboard" "Item copied"

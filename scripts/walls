@@ -1,0 +1,29 @@
+#!/bin/sh
+set -e
+
+WALLPAPER_DIR="$HOME/Pictures/Wallpapers"
+CACHE_FILE="$HOME/.cache/current_wallpaper"
+WMENU_OPTS="-i -N #1a1b26 -n #a9b1d6 -S #7aa2f7 -s #1a1b26"
+
+if [ ! -d "$WALLPAPER_DIR" ]; then
+    notify-send -u critical "Wallpaper Error" "Directory $WALLPAPER_DIR not found"
+    exit 1
+fi
+
+cd "$WALLPAPER_DIR"
+
+selected=$(find . -maxdepth 1 -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.webp" \) \
+    | sed 's|^\./||' \
+    | wmenu -l 15 -p "Wallpaper>" $WMENU_OPTS)
+
+[ -z "$selected" ] && exit 0
+
+FULL_PATH="$WALLPAPER_DIR/$selected"
+
+pkill -x swaybg 2>/dev/null || true
+sleep 0.3
+
+setsid -f swaybg -i "$FULL_PATH" -m fill >/dev/null 2>&1 &
+
+echo "$FULL_PATH" > "$CACHE_FILE"
+notify-send -i "$FULL_PATH" "Wallpaper Changed" "Now showing: $selected"
