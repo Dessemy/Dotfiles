@@ -44,17 +44,24 @@ Spawn
 .It Mod-q
 Spawn
 .Xr qutebrowser 1 .
-.It Mod-p
-Spawn
-.Xr hyprpicker 1 .
 .It Mod-Shift-v
 VPN toggle script.
 .It Mod-s / Mod-Ctrl-s
 Screenshot: full / area.
-.It Mod-Tab
-Application launcher.
-.It Mod-y / r / g / b / w / i
-Terminal apps: yazi / rmpc / gotop / bluetui / wiremix / impala.
+.It Mod-Ctrl-l / r / Ctrl-h / Ctrl-w
+Terminal apps: lf / rmpc / htop / wiremix.
+.It Mod-d
+Wmenu app launcher (also usable as a calculator).
+.It Mod-v
+Wmenu clipboard manager
+.Pq Xr cliphist 1 .
+.It Mod-w
+Wallpaper picker.
+.It Mod-Ctrl-p
+Power mode picker (Performance/Balanced/Powersave/Ultrapowersave).
+.It Mod-Escape
+System menu: Poweroff/Reboot/Lock/Logout.
+Escape cancels.
 .It XF86MonBrightness Up/Down
 Brightness.
 .It XF86Audio Raise/Lower/Mute/MicMute
@@ -71,10 +78,12 @@ Cycle layout.
 Toggle floating.
 .It Mod-e
 Toggle fullscreen.
-.It Mod-a
+.It Mod-u
 Toggle gaps.
 .It Mod-Shift-b
 Toggle bar.
+.It Mod-Shift-Return
+Zoom window to master.
 .It Mod-Ctrl-c
 Close window.
 .It Mod-0 / Mod-Shift-0

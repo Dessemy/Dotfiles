@@ -108,20 +108,21 @@ static const enum libinput_config_tap_button_map button_map = LIBINPUT_CONFIG_TA
 
 #define SHCMD(cmd) { .v = (const char*[]){ "/bin/sh", "-c", cmd, NULL } }
 
-static const char *termcmd[]         = { "foot", NULL };
-static const char *qutecmd[]         = { "qutebrowser", NULL };
-
 static const Key keys[] = {
-	{ MODKEY,                              XKB_KEY_Return,         spawn,            {.v = termcmd} },
-    { MODKEY,                              XKB_KEY_q,              spawn,            {.v = qutecmd} },
+	{ MODKEY,                              XKB_KEY_Return,         spawn,            {.v = (const char*[]){ "foot", NULL }} },
+    { MODKEY,                              XKB_KEY_q,              spawn,            {.v = (const char*[]){ "qutebrowser", NULL }} },
     { MODKEY|WLR_MODIFIER_SHIFT,           XKB_KEY_V,              spawn,            SHCMD("$HOME/.config/scripts/vpn") },
     { MODKEY,                              XKB_KEY_s,              spawn,            SHCMD("$HOME/.config/scripts/snip full") },
     { MODKEY|WLR_MODIFIER_CTRL,            XKB_KEY_s,              spawn,            SHCMD("$HOME/.config/scripts/snip area") },
-	{ MODKEY,                              XKB_KEY_Tab,            spawn,            SHCMD("foot -e $HOME/.config/scripts/launchr") },
-	{ MODKEY,                              XKB_KEY_l,              spawn,            SHCMD("foot -e lf") },
+	{ MODKEY|WLR_MODIFIER_CTRL,            XKB_KEY_l,              spawn,            SHCMD("foot -e lf") },
 	{ MODKEY,                              XKB_KEY_r,              spawn,            SHCMD("foot -e rmpc") },
-	{ MODKEY,                              XKB_KEY_h,              spawn,            SHCMD("foot -e htop") },
-	{ MODKEY,                              XKB_KEY_w,              spawn,            SHCMD("foot -e wiremix") },
+	{ MODKEY|WLR_MODIFIER_CTRL,            XKB_KEY_h,              spawn,            SHCMD("foot -e htop") },
+	{ MODKEY|WLR_MODIFIER_CTRL,            XKB_KEY_w,              spawn,            SHCMD("foot -e wiremix") },
+	{ MODKEY,                              XKB_KEY_d,              spawn,            SHCMD("$HOME/.config/scripts/launchr") },
+	{ MODKEY,                              XKB_KEY_v,              spawn,            SHCMD("$HOME/.config/scripts/clipboard") },
+	{ MODKEY,                              XKB_KEY_w,              spawn,            SHCMD("$HOME/.config/scripts/walls") },
+	{ MODKEY|WLR_MODIFIER_CTRL,            XKB_KEY_p,              spawn,            SHCMD("$HOME/.config/scripts/pwrmode") },
+	{ MODKEY,                              XKB_KEY_Escape,         spawn,            SHCMD("c=$(printf 'Poweroff\\nReboot\\nLock\\nLogout\\n' | wmenu -l 4 -p 'System>' -i -N '#1a1b26' -n '#a9b1d6' -S '#7aa2f7' -s '#1a1b26'); case $c in Poweroff) loginctl poweroff ;; Reboot) loginctl reboot ;; Lock) waylock -init-color 0x1a1b26 -input-color 0x7aa2f7 -input-alt-color 0xad8ee6 -fail-color 0xf7768e ;; Logout) pkill -TERM -x dwl ;; esac") },
 
 	{ 0,                                   XKB_KEY_XF86MonBrightnessUp,   spawn,     SHCMD("brightnessctl set +5%") },
 	{ 0,                                   XKB_KEY_XF86MonBrightnessDown, spawn,     SHCMD("brightnessctl set 5%-") },
@@ -143,7 +144,7 @@ static const Key keys[] = {
 	{ MODKEY,                              XKB_KEY_e,              togglefullscreen, {0} },
 	{ MODKEY,                              XKB_KEY_u,              togglegaps,       {0} },
 	{ MODKEY|WLR_MODIFIER_SHIFT,           XKB_KEY_B,              togglebar,        {0} },
-	{ MODKEY,                              XKB_KEY_Return,         zoom,             {0} },
+	{ MODKEY|WLR_MODIFIER_SHIFT,           XKB_KEY_Return,         zoom,             {0} },
 
 	{ MODKEY|WLR_MODIFIER_CTRL,            XKB_KEY_c,                killclient,       {0} },
 
@@ -173,7 +174,7 @@ static const Key keys[] = {
 
 static const Button buttons[] = {
 	{ ClkTitle,    0,      BTN_MIDDLE, zoom,           {0} },
-	{ ClkStatus,   0,      BTN_MIDDLE, spawn,          {.v = termcmd} },
+	{ ClkStatus,   0,      BTN_MIDDLE, spawn,          {.v = (const char*[]){ "foot", NULL }} },
 	{ ClkClient,   MODKEY, BTN_LEFT,   moveresize,     {.ui = CurMove} },
 	{ ClkClient,   MODKEY, BTN_MIDDLE, togglefloating, {0} },
 	{ ClkClient,   MODKEY, BTN_RIGHT,  moveresize,     {.ui = CurResize} },
