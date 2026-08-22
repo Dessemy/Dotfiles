@@ -121,8 +121,8 @@ static const Key keys[] = {
 	{ MODKEY,                              XKB_KEY_d,              spawn,            SHCMD("$HOME/.config/scripts/launchr") },
 	{ MODKEY,                              XKB_KEY_v,              spawn,            SHCMD("$HOME/.config/scripts/clipboard") },
 	{ MODKEY,                              XKB_KEY_w,              spawn,            SHCMD("$HOME/.config/scripts/walls") },
-	{ MODKEY|WLR_MODIFIER_CTRL,            XKB_KEY_p,              spawn,            SHCMD("$HOME/.config/scripts/pwrmode") },
-	{ MODKEY,                              XKB_KEY_Escape,         spawn,            SHCMD("c=$(printf 'Poweroff\\nReboot\\nLock\\nLogout\\n' | wmenu -l 4 -p 'System>' -i -N '#1a1b26' -n '#a9b1d6' -S '#7aa2f7' -s '#1a1b26'); case $c in Poweroff) loginctl poweroff ;; Reboot) loginctl reboot ;; Lock) waylock -init-color 0x1a1b26 -input-color 0x7aa2f7 -input-alt-color 0xad8ee6 -fail-color 0xf7768e ;; Logout) pkill -TERM -x dwl ;; esac") },
+	{ MODKEY|WLR_MODIFIER_CTRL,            XKB_KEY_p,              spawn,            SHCMD("foot -e $HOME/.config/scripts/pwrmode") },
+	{ MODKEY,                              XKB_KEY_Escape,         spawn,            SHCMD("waylock -init-color 0x1a1b26 -input-color 0x7aa2f7 -input-alt-color 0xad8ee6 -fail-color 0xf7768e") },
 
 	{ 0,                                   XKB_KEY_XF86MonBrightnessUp,   spawn,     SHCMD("brightnessctl set +5%") },
 	{ 0,                                   XKB_KEY_XF86MonBrightnessDown, spawn,     SHCMD("brightnessctl set 5%-") },
