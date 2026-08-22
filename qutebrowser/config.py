@@ -50,15 +50,6 @@ config.set(
     ["foot", "--app-id", "filechoose_lf", "lf", "-selection-path", "{}"],
 )
 
-config.bind(
-    ",d",
-    'hint links spawn --detach aria2-add {hint-url} {url}'
-)
-config.bind(
-    ",D",
-    '--rapid hint links spawn --detach aria2-add {hint-url} {url}'
-)
-
 c.statusbar.widgets = ["url", "progress"]
 
 c.tabs.favicons.scale = 1.0
