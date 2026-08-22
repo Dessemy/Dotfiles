@@ -87,33 +87,23 @@ cmd open ${{
 		esac
 	;;
 	(application/zip)
-		case "${f##*.}" in
-		(*)
-			for f in $fx; do
-				"${OPENER:-xdg-open}" $f
-			done
-		esac
+		aunpack $fx
 	;;
 	(*)
 		case "$f" in
 		( *.tar.bz | *.tar.bz2 | *.tbz | \
 		*.tbz2 | *.tar.gz | *.tgz | *.tar.lzma | \
-		*.tar.xz | *.txz | *.zip | *.rar | *.iso)
-			mntdir="$f-archivemount"
-			if ! [ -d "$mntdir" ]; then
-				mkdir -- "$mntdir"
-				archivemount "$f" "$mntdir"
-				printf -- "%s\n" "$mntdir" >> "/tmp/__lf_archivemount_$id"
-			fi
-			lf -remote "send $id cd '$mntdir'"
-			lf -remote "send $id reload"
+		*.tar.xz | *.txz | *.zip | *.rar | *.iso | \
+		*.7z | *.cab | *.lha | *.lzh | *.arj | *.ace)
+			aunpack $fx
+		;;
+		(*)
+			for f in $fx; do
+				dem "${OPENER:-xdg-open}" $f
+			done
 		;;
 		esac
-
-		for f in $fx; do
-			dem "${OPENER:-xdg-open}" $f
-		done
-		;;
+	;;
 	esac
 }}
 
@@ -427,3 +417,5 @@ map <c-z> stop
 map W &{ nohup "${TERMINAL:-foot}" >/dev/null 2>&1& }
 
 map Y $printf "%s" "$fx" | wl-copy
+
+
