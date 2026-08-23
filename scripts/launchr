@@ -2,26 +2,29 @@
 set -e
 
 APP_DIRS="/usr/share/applications $HOME/.local/share/applications"
-WMENU_OPTS="-i -N #1a1b26 -n #a9b1d6 -S #7aa2f7 -s #1a1b26"
+
+wmenu_themed() {
+    wmenu -i -N '#1a1b26ff' -n '#a9b1d6ff' -M '#ad8ee6ff' -m '#1a1b26ff' \
+        -S '#7aa2f7ff' -s '#1a1b26ff' -f 'FiraCode Nerd Font 14' "$@"
+}
 
 list_apps() {
     for dir in $APP_DIRS; do
         [ -d "$dir" ] || continue
-        for f in "$dir"/*.desktop; do
-            [ -f "$f" ] || continue
-            grep -q '^NoDisplay=true' "$f" && continue
-
-            name=$(grep -m1 '^Name=' "$f" | cut -d'=' -f2-)
-            exec_raw=$(grep -m1 '^Exec=' "$f" | cut -d'=' -f2-)
-
-            [ -z "$name" ] && continue
-            [ -z "$exec_raw" ] && continue
-
-            exec_clean=$(echo "$exec_raw" | sed -E 's/%[fFuUdDnNickvm]//g')
-
-            printf '%s\t%s\n' "$name" "$exec_clean"
-        done
-    done | sort -u -t"$(printf '\t')" -k1,1
+        find "$dir" -maxdepth 1 -name '*.desktop' -type f
+    done | xargs -r awk -F'=' '
+        function flush() {
+            if (!nodisplay && name != "" && exec_raw != "") {
+                gsub(/%[fFuUdDnNickvm]/, "", exec_raw)
+                print name "\t" exec_raw
+            }
+        }
+        FNR==1 { if (NR>1) flush(); name=""; exec_raw=""; nodisplay=0 }
+        /^NoDisplay=true/ { nodisplay=1 }
+        /^Name=/ && name=="" { name=substr($0, index($0,"=")+1) }
+        /^Exec=/ && exec_raw=="" { exec_raw=substr($0, index($0,"=")+1) }
+        END { flush() }
+    ' | sort -u -t"$(printf '\t')" -k1,1
 }
 
 calc_eval() {
@@ -42,7 +45,13 @@ calc_eval() {
 }
 
 apps=$(list_apps)
-chosen=$(printf '%s\n' "$apps" | cut -f1 | wmenu -l 15 -p "Launch>" $WMENU_OPTS)
+
+if ! command -v wmenu >/dev/null 2>&1; then
+    notify-send -u critical "Launcher Error" "wmenu is not installed"
+    exit 1
+fi
+
+chosen=$(printf '%s\n' "$apps" | cut -f1 | wmenu_themed -l 15 -p "Launch>") || exit 0
 [ -z "$chosen" ] && exit 0
 
 cmd=$(printf '%s\n' "$apps" | awk -F'\t' -v n="$chosen" '$1==n {print $2; exit}')

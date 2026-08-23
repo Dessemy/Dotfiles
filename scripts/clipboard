@@ -1,9 +1,22 @@
 #!/bin/sh
 set -e
 
-WMENU_OPTS="-i -nb #1a1b26 -nf #a9b1d6 -sb #7aa2f7 -sf #1a1b26"
+wmenu_themed() {
+    wmenu -i -N '#1a1b26ff' -n '#a9b1d6ff' -M '#ad8ee6ff' -m '#1a1b26ff' \
+        -S '#7aa2f7ff' -s '#1a1b26ff' -f 'FiraCode Nerd Font 14' "$@"
+}
 
-selected=$(cliphist list | wmenu -l 15 -p "Clipboard>" $WMENU_OPTS)
+if ! command -v cliphist >/dev/null 2>&1; then
+    notify-send -u critical "Clipboard Error" "cliphist is not installed"
+    exit 1
+fi
+
+if ! command -v wmenu >/dev/null 2>&1; then
+    notify-send -u critical "Clipboard Error" "wmenu is not installed"
+    exit 1
+fi
+
+selected=$(cliphist list | wmenu_themed -l 15 -p "Clipboard>") || exit 0
 [ -z "$selected" ] && exit 0
 
 printf '%s' "$selected" | cliphist decode | wl-copy

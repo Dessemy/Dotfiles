@@ -1,15 +1,16 @@
 #!/bin/sh
 set -e
 
-WMENU_OPTS="-i -nb #1a1b26 -nf #a9b1d6 -sb #7aa2f7 -sf #1a1b26"
+wmenu_themed() {
+    wmenu -i -N '#1a1b26ff' -n '#a9b1d6ff' -M '#ad8ee6ff' -m '#1a1b26ff' \
+        -S '#7aa2f7ff' -s '#1a1b26ff' -f 'FiraCode Nerd Font 14' "$@"
+}
 STATE_DIR="$HOME/.cache/powermode-revert"
 
 notify_power() {
     command -v notify-send >/dev/null 2>&1 && \
         notify-send -t 1800 "Power Mode" "$1"
 }
-
-# ---------- refresh rate / adaptive sync ----------
 
 capture_outputs_state() {
     mkdir -p "$STATE_DIR"
@@ -189,8 +190,6 @@ set_kernel() {
     sudo grub-set-default "$id" >/dev/null 2>&1 || true
 }
 
-# ---------- tlp ----------
-
 capture_tlp_state() {
     if sudo test -f /etc/tlp.d/90-power-mode-override.conf; then
         sudo cp /etc/tlp.d/90-power-mode-override.conf "$STATE_DIR/tlp.conf" 2>/dev/null || true
@@ -219,8 +218,6 @@ TLP_PERSISTENT_DEFAULT=1
 TLPCONF
 }
 
-# ---------- ultrapowersave cpu/sata knobs ----------
-
 capture_cpu_sata_state() {
     : > "$STATE_DIR/cpu-sata"
     sudo sh -c '
@@ -239,8 +236,6 @@ restore_cpu_sata_state() {
         done < "'"$STATE_DIR"'/cpu-sata"
     ' || true
 }
-
-# ---------- backup / revert orchestration ----------
 
 backup_all_state() {
     rm -rf "$STATE_DIR"
@@ -266,8 +261,7 @@ cleanup_state() {
     rm -rf "$STATE_DIR"
 }
 
-# ---------- cancellable countdown ----------
-# Returns 0 if reboot should proceed, 1 if the user cancelled with Esc.
+cancelled with Esc.
 
 countdown_or_cancel() {
     old_stty=$(stty -g < /dev/tty 2>/dev/null) || return 0
@@ -292,8 +286,6 @@ countdown_or_cancel() {
     [ "$cancelled" -eq 1 ] && return 1
     return 0
 }
-
-# ---------- main apply ----------
 
 apply_power_mode() {
     mode="$1"
@@ -360,8 +352,13 @@ if ! sudo -v; then
     exit 1
 fi
 
+if ! command -v wmenu >/dev/null 2>&1; then
+    notify-send -u critical "Power Mode Error" "wmenu is not installed"
+    exit 1
+fi
+
 chosen=$(printf 'Performance\nBalanced\nPowersave\nUltrapowersave\n' | \
-    wmenu -l 4 -p "Power Mode>" $WMENU_OPTS)
+    wmenu_themed -l 4 -p "Power Mode>") || exit 0
 
 [ -z "$chosen" ] && exit 0
 
