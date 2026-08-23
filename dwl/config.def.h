@@ -120,7 +120,8 @@ static const Key keys[] = {
 	{ MODKEY|WLR_MODIFIER_CTRL,            XKB_KEY_w,              spawn,            SHCMD("foot -e wiremix") },
 	{ MODKEY,                              XKB_KEY_d,              spawn,            SHCMD("$HOME/.config/scripts/launchr") },
 	{ MODKEY,                              XKB_KEY_v,              spawn,            SHCMD("$HOME/.config/scripts/clipboard") },
-	{ MODKEY,                              XKB_KEY_w,              spawn,            SHCMD("$HOME/.config/scripts/walls") },
+	{ MODKEY|WLR_MODIFIER_SHIFT,           XKB_KEY_L,              spawn,            SHCMD("$HOME/.config/scripts/walls next") },
+	{ MODKEY|WLR_MODIFIER_SHIFT,           XKB_KEY_H,              spawn,            SHCMD("$HOME/.config/scripts/walls prev") },
 	{ MODKEY|WLR_MODIFIER_CTRL,            XKB_KEY_p,              spawn,            SHCMD("foot -e $HOME/.config/scripts/pwrmode") },
 	{ MODKEY,                              XKB_KEY_Escape,         spawn,            SHCMD("waylock -init-color 0x1a1b26 -input-color 0x7aa2f7 -input-alt-color 0xad8ee6 -fail-color 0xf7768e") },
 
