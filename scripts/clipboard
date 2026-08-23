@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-WMENU_OPTS="-i -N #1a1b26 -n #a9b1d6 -S #7aa2f7 -s #1a1b26"
+WMENU_OPTS="-i -nb #1a1b26 -nf #a9b1d6 -sb #7aa2f7 -sf #1a1b26"
 
 selected=$(cliphist list | wmenu -l 15 -p "Clipboard>" $WMENU_OPTS)
 [ -z "$selected" ] && exit 0

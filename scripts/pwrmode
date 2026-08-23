@@ -1,11 +1,58 @@
 #!/bin/sh
 set -e
 
-WMENU_OPTS="-i -N #1a1b26 -n #a9b1d6 -S #7aa2f7 -s #1a1b26"
+WMENU_OPTS="-i -nb #1a1b26 -nf #a9b1d6 -sb #7aa2f7 -sf #1a1b26"
+STATE_DIR="$HOME/.cache/powermode-revert"
 
 notify_power() {
     command -v notify-send >/dev/null 2>&1 && \
         notify-send -t 1800 "Power Mode" "$1"
+}
+
+# ---------- refresh rate / adaptive sync ----------
+
+capture_outputs_state() {
+    mkdir -p "$STATE_DIR"
+    : > "$STATE_DIR/outputs"
+    command -v wlr-randr >/dev/null 2>&1 || return 0
+
+    outputs=$(wlr-randr 2>/dev/null | awk '
+        /^[^[:space:]]/ { if (name != "" && enabled == "yes") print name; name=$1; enabled=""; next }
+        /^[[:space:]]+Enabled:/ { enabled=$2 }
+        END { if (name != "" && enabled == "yes") print name }
+    ')
+
+    for output in $outputs; do
+        block=$(wlr-randr 2>/dev/null | awk -v o="$output" '
+            $0 ~ "^" o "[[:space:]]" {inside=1; next}
+            inside && /^[^[:space:]]/ {exit}
+            inside {print}
+        ')
+
+        current_line=$(printf '%s\n' "$block" | grep current || true)
+        resolution=$(printf '%s\n' "$current_line" | sed -nE 's/^[[:space:]]*([0-9]+x[0-9]+) px,.*/\1/p')
+        rate=$(printf '%s\n' "$current_line" | sed -nE 's/.*px,[[:space:]]*([0-9.]+)[[:space:]]*Hz.*/\1/p')
+        sync=$(printf '%s\n' "$block" | sed -nE 's/^[[:space:]]*Adaptive [Ss]ync[[:space:]]*(enabled)?:?[[:space:]]*(yes|no|enabled|disabled).*/\2/p' | head -n1)
+
+        [ -n "$resolution" ] && [ -n "$rate" ] || continue
+        printf '%s\t%s\t%s\t%s\n' "$output" "$resolution" "$rate" "$sync" >> "$STATE_DIR/outputs"
+    done
+}
+
+restore_outputs_state() {
+    [ -f "$STATE_DIR/outputs" ] || return 0
+    command -v wlr-randr >/dev/null 2>&1 || return 0
+
+    while IFS="$(printf '\t')" read -r output resolution rate sync; do
+        [ -n "$output" ] || continue
+        wlr-randr --output "$output" --mode "${resolution}@${rate}Hz" >/dev/null 2>&1 || \
+        wlr-randr --output "$output" --mode "${resolution}@${rate}" >/dev/null 2>&1 || true
+
+        case "$sync" in
+            yes|enabled)  wlr-randr --output "$output" --adaptive-sync enabled  >/dev/null 2>&1 || true ;;
+            no|disabled)  wlr-randr --output "$output" --adaptive-sync disabled >/dev/null 2>&1 || true ;;
+        esac
+    done < "$STATE_DIR/outputs"
 }
 
 set_refresh_rate() {
@@ -17,7 +64,6 @@ set_refresh_rate() {
     else
         sync_state=enabled
     fi
-    set_adaptive_sync "$sync_state"
 
     outputs=$(wlr-randr 2>/dev/null | awk '
         /^[^[:space:]]/ { if (name != "" && enabled == "yes") print name; name=$1; enabled=""; next }
@@ -26,6 +72,8 @@ set_refresh_rate() {
     ')
 
     for output in $outputs; do
+        wlr-randr --output "$output" --adaptive-sync "$sync_state" >/dev/null 2>&1 || true
+
         current_line=$(wlr-randr 2>/dev/null | awk -v o="$output" '
             $0 ~ "^" o "[[:space:]]" {inside=1; next}
             inside && /^[^[:space:]]/ {exit}
@@ -46,7 +94,6 @@ set_refresh_rate() {
                 print line
             }
         ')
-
         [ -n "$rates" ] || continue
 
         if [ "$target" = "lowest" ]; then
@@ -54,39 +101,30 @@ set_refresh_rate() {
         else
             rate=$(printf '%s\n' "$rates" | sort -n | tail -n1)
         fi
-
         [ -n "$rate" ] || continue
 
-        wlr-randr --output "$output" --mode "${resolution}@${rate}Hz" \
-            >/dev/null 2>&1 || \
-        wlr-randr --output "$output" --mode "${resolution}@${rate}" \
-            >/dev/null 2>&1 || true
-
-        mkdir -p "$HOME/.cache"
-        printf '%s %s@%sHz %s\n' "$output" "$resolution" "$rate" "$sync_state" \
-            > "$HOME/.cache/refresh-rate-state"
+        wlr-randr --output "$output" --mode "${resolution}@${rate}Hz" >/dev/null 2>&1 || \
+        wlr-randr --output "$output" --mode "${resolution}@${rate}" >/dev/null 2>&1 || true
     done
 }
 
-set_adaptive_sync() {
-    state="$1"
-    command -v wlr-randr >/dev/null 2>&1 || return 0
+# ---------- gpu mode ----------
 
-    wlr-randr 2>/dev/null | awk '
-        /^[^[:space:]]/ { if (name != "" && enabled == "yes") print name; name=$1; enabled=""; next }
-        /^[[:space:]]+Enabled:/ { enabled=$2 }
-        END { if (name != "" && enabled == "yes") print name }
-    ' |
-        while read -r output; do
-            [ -n "$output" ] || continue
-            wlr-randr --output "$output" --adaptive-sync "$state" \
-                >/dev/null 2>&1 || true
-        done
+capture_gpu_state() {
+    command -v envycontrol >/dev/null 2>&1 || { : > "$STATE_DIR/gpu"; return 0; }
+    envycontrol --query 2>/dev/null | tr -d ' \n' > "$STATE_DIR/gpu" || : > "$STATE_DIR/gpu"
+}
+
+restore_gpu_state() {
+    [ -s "$STATE_DIR/gpu" ] || return 0
+    prev=$(cat "$STATE_DIR/gpu")
+    case "$prev" in
+        integrated|hybrid|nvidia) sudo envycontrol -s "$prev" >/dev/null 2>&1 || true ;;
+    esac
 }
 
 set_gpu_mode() {
     mode="$1"
-
     command -v envycontrol >/dev/null 2>&1 || return 0
 
     case "$mode" in
@@ -98,6 +136,19 @@ set_gpu_mode() {
     if [ $? -ne 0 ]; then
         notify_power "GPU mode switch to $mode failed: $out"
     fi
+}
+
+# ---------- kernel / grub default ----------
+
+capture_grub_state() {
+    sudo test -f /boot/grub/grub.cfg 2>/dev/null || { : > "$STATE_DIR/grub"; return 0; }
+    sudo grub-editenv list 2>/dev/null | sed -n 's/^saved_entry=//p' > "$STATE_DIR/grub" || : > "$STATE_DIR/grub"
+}
+
+restore_grub_state() {
+    [ -s "$STATE_DIR/grub" ] || return 0
+    prev=$(cat "$STATE_DIR/grub")
+    [ -n "$prev" ] && sudo grub-set-default "$prev" >/dev/null 2>&1 || true
 }
 
 set_kernel() {
@@ -135,8 +186,28 @@ set_kernel() {
     ')
 
     [ -n "$id" ] || return 0
-
     sudo grub-set-default "$id" >/dev/null 2>&1 || true
+}
+
+# ---------- tlp ----------
+
+capture_tlp_state() {
+    if sudo test -f /etc/tlp.d/90-power-mode-override.conf; then
+        sudo cp /etc/tlp.d/90-power-mode-override.conf "$STATE_DIR/tlp.conf" 2>/dev/null || true
+        echo present > "$STATE_DIR/tlp-existed"
+    else
+        echo absent > "$STATE_DIR/tlp-existed"
+    fi
+}
+
+restore_tlp_state() {
+    [ -f "$STATE_DIR/tlp-existed" ] || return 0
+    if [ "$(cat "$STATE_DIR/tlp-existed")" = "present" ]; then
+        sudo cp "$STATE_DIR/tlp.conf" /etc/tlp.d/90-power-mode-override.conf 2>/dev/null || true
+    else
+        sudo rm -f /etc/tlp.d/90-power-mode-override.conf 2>/dev/null || true
+    fi
+    sudo tlp start >/dev/null 2>&1 || true
 }
 
 set_tlp_persistent() {
@@ -148,8 +219,86 @@ TLP_PERSISTENT_DEFAULT=1
 TLPCONF
 }
 
+# ---------- ultrapowersave cpu/sata knobs ----------
+
+capture_cpu_sata_state() {
+    : > "$STATE_DIR/cpu-sata"
+    sudo sh -c '
+        for f in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference \
+                 /sys/class/scsi_host/host*/link_power_management_policy; do
+            [ -f "$f" ] && printf "%s\t%s\n" "$f" "$(cat "$f" 2>/dev/null)"
+        done
+    ' > "$STATE_DIR/cpu-sata" 2>/dev/null || true
+}
+
+restore_cpu_sata_state() {
+    [ -s "$STATE_DIR/cpu-sata" ] || return 0
+    sudo sh -c '
+        while IFS="$(printf "\t")" read -r f v; do
+            [ -n "$f" ] && [ -n "$v" ] && [ -w "$f" ] && printf "%s" "$v" > "$f" 2>/dev/null
+        done < "'"$STATE_DIR"'/cpu-sata"
+    ' || true
+}
+
+# ---------- backup / revert orchestration ----------
+
+backup_all_state() {
+    rm -rf "$STATE_DIR"
+    mkdir -p "$STATE_DIR"
+    capture_outputs_state
+    capture_gpu_state
+    capture_grub_state
+    capture_tlp_state
+    capture_cpu_sata_state
+}
+
+revert_all_state() {
+    restore_outputs_state
+    restore_gpu_state
+    restore_grub_state
+    restore_tlp_state
+    restore_cpu_sata_state
+    rm -rf "$STATE_DIR"
+    notify_power "Cancelled — reverted to previous settings"
+}
+
+cleanup_state() {
+    rm -rf "$STATE_DIR"
+}
+
+# ---------- cancellable countdown ----------
+# Returns 0 if reboot should proceed, 1 if the user cancelled with Esc.
+
+countdown_or_cancel() {
+    old_stty=$(stty -g < /dev/tty 2>/dev/null) || return 0
+    stty -echo -icanon min 0 time 10 < /dev/tty 2>/dev/null
+
+    i=3
+    cancelled=0
+    while [ $i -gt 0 ]; do
+        printf '\rRebooting in %d... (press Esc to cancel)   ' "$i" > /dev/tty
+        key=$(dd bs=1 count=1 2>/dev/null < /dev/tty)
+        if [ "$key" = "$(printf '\033')" ]; then
+            cancelled=1
+            break
+        fi
+        sleep 1
+        i=$((i - 1))
+    done
+
+    stty "$old_stty" < /dev/tty 2>/dev/null
+    printf '\n' > /dev/tty
+
+    [ "$cancelled" -eq 1 ] && return 1
+    return 0
+}
+
+# ---------- main apply ----------
+
 apply_power_mode() {
     mode="$1"
+
+    backup_all_state
 
     case "$mode" in
         Powersave)
@@ -158,7 +307,6 @@ apply_power_mode() {
             set_refresh_rate lowest
             set_gpu_mode integrated
             set_kernel default
-            notify_power "Powersave — rebooting..."
             ;;
         Balanced)
             sudo tlp balanced || return 1
@@ -166,7 +314,6 @@ apply_power_mode() {
             set_refresh_rate lowest
             set_gpu_mode hybrid
             set_kernel default
-            notify_power "Balanced — rebooting..."
             ;;
         Performance)
             sudo tlp performance || return 1
@@ -174,7 +321,6 @@ apply_power_mode() {
             set_refresh_rate highest
             set_gpu_mode nvidia
             set_kernel zen
-            notify_power "Performance — rebooting..."
             ;;
         Ultrapowersave)
             sudo tlp power-saver || return 1
@@ -191,13 +337,17 @@ apply_power_mode() {
                     [ -w "$f" ] && printf "%s" min_power > "$f" 2>/dev/null
                 done
             ' || true
-
-            notify_power "Ultrapowersave — rebooting..."
             ;;
     esac
 
-    sleep 1
-    sudo reboot
+    notify_power "$mode applied"
+
+    if countdown_or_cancel; then
+        cleanup_state
+        sudo reboot
+    else
+        revert_all_state
+    fi
 }
 
 if ! command -v tlp >/dev/null 2>&1; then
