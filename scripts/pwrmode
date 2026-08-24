@@ -261,8 +261,6 @@ cleanup_state() {
     rm -rf "$STATE_DIR"
 }
 
-cancelled with Esc.
-
 countdown_or_cancel() {
     old_stty=$(stty -g < /dev/tty 2>/dev/null) || return 0
     stty -echo -icanon min 0 time 10 < /dev/tty 2>/dev/null
