@@ -108,6 +108,8 @@ static const enum libinput_config_tap_button_map button_map = LIBINPUT_CONFIG_TA
 
 #define SHCMD(cmd) { .v = (const char*[]){ "/bin/sh", "-c", cmd, NULL } }
 
+#define WMENU_THEME "-i -N '#1a1b26ff' -n '#a9b1d6ff' -M '#ad8ee6ff' -m '#1a1b26ff' -S '#7aa2f7ff' -s '#1a1b26ff' -f 'FiraCode Nerd Font 14'"
+
 static const Key keys[] = {
 	{ MODKEY,                              XKB_KEY_Return,         spawn,            {.v = (const char*[]){ "foot", NULL }} },
     { MODKEY,                              XKB_KEY_q,              spawn,            {.v = (const char*[]){ "qutebrowser", NULL }} },
@@ -115,11 +117,11 @@ static const Key keys[] = {
     { MODKEY,                              XKB_KEY_s,              spawn,            SHCMD("$HOME/.config/scripts/snip full") },
     { MODKEY|WLR_MODIFIER_CTRL,            XKB_KEY_s,              spawn,            SHCMD("$HOME/.config/scripts/snip area") },
 	{ MODKEY|WLR_MODIFIER_CTRL,            XKB_KEY_h,              spawn,            SHCMD("foot -e htop") },
-	{ MODKEY,                              XKB_KEY_d,              spawn,            SHCMD("$HOME/.config/scripts/launchr") },
-	{ MODKEY,                              XKB_KEY_v,              spawn,            SHCMD("$HOME/.config/scripts/clipboard") },
+	{ MODKEY,                              XKB_KEY_d,              spawn,            SHCMD("$HOME/.config/scripts/launchr " WMENU_THEME) },
+	{ MODKEY,                              XKB_KEY_v,              spawn,            SHCMD("c=$(cliphist list | wmenu " WMENU_THEME " -l 15 -p 'Clipboard>'); [ -n \"$c\" ] && printf '%s' \"$c\" | cliphist decode | wl-copy && notify-send 'Clipboard' 'Item copied'") },
 	{ MODKEY|WLR_MODIFIER_SHIFT,           XKB_KEY_L,              spawn,            SHCMD("$HOME/.config/scripts/walls next") },
 	{ MODKEY|WLR_MODIFIER_SHIFT,           XKB_KEY_H,              spawn,            SHCMD("$HOME/.config/scripts/walls prev") },
-	{ MODKEY|WLR_MODIFIER_CTRL,            XKB_KEY_p,              spawn,            SHCMD("foot -e $HOME/.config/scripts/pwrmode") },
+	{ MODKEY|WLR_MODIFIER_CTRL,            XKB_KEY_p,              spawn,            SHCMD("foot -e $HOME/.config/scripts/pwrmode " WMENU_THEME) },
 	{ MODKEY,                              XKB_KEY_Escape,         spawn,            SHCMD("waylock -init-color 0x1a1b26 -input-color 0x7aa2f7 -input-alt-color 0xad8ee6 -fail-color 0xf7768e") },
 
 	{ 0,                                   XKB_KEY_XF86MonBrightnessUp,   spawn,     SHCMD("brightnessctl set +5%") },
