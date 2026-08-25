@@ -2,7 +2,7 @@ import os.path
 
 config.load_autoconfig(True)
 
-font = "FiraCode Nerd Font Mono Bold"
+font = "FiraCode Nerd Font"
 
 base00 = "#1a1b26"
 base01 = "#16161e"
@@ -51,6 +51,8 @@ config.set(
 )
 
 c.statusbar.widgets = ["url", "progress"]
+
+c.scrolling.bar = "never"
 
 c.tabs.favicons.scale = 1.0
 c.tabs.position = "top"

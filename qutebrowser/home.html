@@ -4,9 +4,18 @@
 <head>
   <title>Homepage</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
   <style>
-    body {
+    html, body {
       background-color: #1a1b26;
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+    }
+    ::-webkit-scrollbar {
+      display: none;
     }
     a, p {
       font-family: "FiraCode Nerd Font Propo Bold";
@@ -21,25 +30,11 @@
     a:hover {
       color: #7aa2f7;
     }
-    .youtube {
-      color: #f7768e;
-      font-weight: bold;
-    }
-    .youtube:hover {
-      background-color: #f7768e;
-    }
-    .github {
-      color: #cbccd1;
-      font-weight: bold;
-    }
-    .github:hover {
-      background-color: #cbccd1;
-    }
-    .duckduckgo {
+    .search {
       color: #e0af68;
       font-weight: bold;
     }
-    .duckduckgo:hover {
+    .search:hover {
       background-color: #e0af68;
     }
 
@@ -50,12 +45,14 @@
     }
     .ascii {
       color: #7aa2f7;
-      font-family: "FiraCode Nerd Font", monospace;
-      font-size: 14px;
-      line-height: 1.1;
+      font-family: "Press Start 2P", "FiraCode Nerd Font", monospace;
+      font-size: 32px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      line-height: 1.4;
       white-space: pre;
       display: inline-block;
-      text-align: left;
+      text-align: center;
     }
     .links {
       margin-top: 60px;
@@ -64,43 +61,17 @@
       margin: 0 15px;
       font-size: 32px;
     }
-    .links svg {
-      width: 32px;
-      height: 32px;
-    }
   </style>
 </head>
 
 <body>
   <br><br><br>
   <div class="icon">
-    <pre class="ascii">
- ██████╗ ██╗   ██╗████████╗███████╗██████╗ ██████╗  ██████╗ ██╗    ██╗███████╗███████╗██████╗
-██╔═══██╗██║   ██║╚══██╔══╝██╔════╝██╔══██╗██╔══██╗██╔═══██╗██║    ██║██╔════╝██╔════╝██╔══██╗
-██║   ██║██║   ██║   ██║   █████╗  ██████╔╝██████╔╝██║   ██║██║ █╗ ██║███████╗█████╗  ██████╔╝
-██║▄▄ ██║██║   ██║   ██║   ██╔══╝  ██╔══██╗██╔══██╗██║   ██║██║███╗██║╚════██║██╔══╝  ██╔══██╗
-╚██████╔╝╚██████╔╝   ██║   ███████╗██████╔╝██║  ██║╚██████╔╝╚███╔███╔╝███████║███████╗██║  ██║
- ╚══▀▀═╝  ╚═════╝    ╚═╝   ╚══════╝╚═════╝ ╚═╝  ╚═╝ ╚═════╝  ╚══╝╚══╝ ╚══════╝╚══════╝╚═╝  ╚═╝
-    </pre>
+    <pre class="ascii">qutebrowser</pre>
   </div>
   <br><br>
   <div class="links">
-    <a class="duckduckgo" href="https://duckduckgo.com" target="_blank" rel="noopener noreferrer">
-      <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:middle;margin-right:6px;">
-        <circle cx="11" cy="11" r="8"/>
-        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-      </svg>DuckDuckGo
-    </a>
-    <a class="youtube" href="https://www.youtube.com" target="_blank" rel="noopener noreferrer">
-      <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:6px;">
-        <path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8ZM9.6 15.5V8.5l6.3 3.5-6.3 3.5Z"/>
-      </svg>YouTube
-    </a>
-    <a class="github" href="https://www.github.com" target="_blank" rel="noopener noreferrer">
-      <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:6px;">
-        <path d="M12 0.3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.8.1-.8.1-.8 1.2.1 1.9 1.3 1.9 1.3 1.1 1.9 2.9 1.3 3.6 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.3-3.2-.1-.3-.6-1.6.1-3.3 0 0 1-.3 3.4 1.2a11.8 11.8 0 0 1 6.2 0c2.4-1.6 3.4-1.2 3.4-1.2.7 1.7.2 3 .1 3.3.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 0.3Z"/>
-      </svg>GitHub
-    </a>
+    <a class="search" href="https://duckduckgo.com" target="_blank" rel="noopener noreferrer">[o] Search</a>
   </div>
 </body>
 
