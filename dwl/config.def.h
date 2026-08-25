@@ -10,7 +10,7 @@ static const unsigned int gappx            = 3;
 static const unsigned int borderpx         = 0;
 static const int showbar                   = 1;
 static const int topbar                    = 1;
-static const char *fonts[]                 = {"FiraCode Nerd Font Propo:style=Bold:size=16"};
+static const char *fonts[]                 = {"FiraCode Nerd Font:style=Bold:size=16"};
 static const float rootcolor[]             = COLOR(0x000000ff);
 
 static const float fullscreen_bg[]         = {0.0f, 0.0f, 0.0f, 1.0f};
