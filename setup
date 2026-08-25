@@ -164,9 +164,10 @@ useradd -m -G wheel -s /bin/bash "${USERNAME}"
 echo "${USERNAME}:${USER_PASS}" | chpasswd
 
 mkdir -p /etc/sudoers.d
-cat > /etc/sudoers.d/10-wheel <<'SUDOERS'
+cat > /etc/sudoers.d/10-wheel <<SUDOERS
 %wheel ALL=(ALL:ALL) ALL
 Defaults env_keep += "HOME"
+Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl:/home/${USERNAME}/.local/bin"
 SUDOERS
 chmod 0440 /etc/sudoers.d/10-wheel
 visudo -cf /etc/sudoers.d/10-wheel || exit 1
