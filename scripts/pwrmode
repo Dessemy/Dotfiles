@@ -109,8 +109,6 @@ set_refresh_rate() {
     done
 }
 
-# ---------- gpu mode ----------
-
 capture_gpu_state() {
     command -v envycontrol >/dev/null 2>&1 || { : > "$STATE_DIR/gpu"; return 0; }
     envycontrol --query 2>/dev/null | tr -d ' \n' > "$STATE_DIR/gpu" || : > "$STATE_DIR/gpu"
