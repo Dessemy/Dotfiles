@@ -3,9 +3,7 @@ set -e
 error() { exit 1; }
 [ "$(id -u)" -eq 0 ] || error "Run as root."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_DIRS=(dwl foot fastfetch rmpc mako nvim qutebrowser scripts lf)
-THEME_NAME="tokyonight"
-THEME_FONT="FiraCode Nerd Font Propo Bold 15"
+CONFIG_DIRS=(dwl foot fastfetch mako nvim qutebrowser scripts lf)
 chattr -i /etc/resolv.conf 2>/dev/null || true
 pacman -Sy --noconfirm parted
 if [ -d /sys/firmware/efi/efivars ]; then
@@ -113,14 +111,9 @@ if [ -d "$SCRIPT_DIR/dwl" ]; then
 else
     :
 fi
-if [ -d "$SCRIPT_DIR/$THEME_NAME" ]; then
-    cp -r "$SCRIPT_DIR/$THEME_NAME" /mnt/root/theme-src
-else
-    :
-fi
 sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 5/' /etc/pacman.conf 2>/dev/null || true
 pacman -Syy --noconfirm || true
-BASESTRAP_PKGS="base base-devel elogind-runit dbus-runit linux linux-firmware linux-headers linux-zen linux-zen-headers git wget curl rsync unzip zip tar reflector sudo bash-completion tree less pciutils usbutils pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber alsa-utils iwd iwd-runit iproute2 inetutils openssh openssh-runit openresolv grub efibootmgr ntfs-3g dosfstools e2fsprogs exfatprogs bluez bluez-utils bluez-runit mpd"
+BASESTRAP_PKGS="base base-devel elogind-runit dbus-runit linux linux-firmware linux-headers linux-zen linux-zen-headers git wget curl rsync unzip zip tar reflector sudo bash-completion tree less pciutils usbutils pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber alsa-utils iwd iwd-runit iproute2 inetutils openssh openssh-runit openresolv grub efibootmgr ntfs-3g dosfstools e2fsprogs exfatprogs bluez bluez-utils bluez-runit"
 BASESTRAP_OK=0
 for i in 1 2 3; do
     if basestrap /mnt $BASESTRAP_PKGS; then
@@ -264,29 +257,8 @@ mkdir -p \
     "/home/${USERNAME}/Music" \
     "/home/${USERNAME}/Downloads" \
     "/home/${USERNAME}/Pictures/Wallpapers" \
-    "/home/${USERNAME}/.local/share/mpd" \
-    "/home/${USERNAME}/.cache" \
-    "/home/${USERNAME}/.config/mpd"
+    "/home/${USERNAME}/.cache"
 
-if [ ! -f "/home/${USERNAME}/.config/mpd/mpd.conf" ]; then
-    cat > "/home/${USERNAME}/.config/mpd/mpd.conf" <<MPDCONF
-music_directory     "~/Music"
-db_file             "~/.local/share/mpd/database"
-sticker_file        "~/.local/share/mpd/sticker.sql"
-
-bind_to_address     "127.0.0.1"
-auto_update         "yes"
-
-input {
-        plugin "curl"
-}
-
-audio_output {
-    type "pipewire"
-    name "Pipewire Sound Server"
-}
-MPDCONF
-fi
 
 if ! grep -q '.local/bin' "/home/${USERNAME}/.bashrc" 2>/dev/null; then
     cat >> "/home/${USERNAME}/.bashrc" <<'LOCALBINPATH'
@@ -412,7 +384,7 @@ rm -f /root/.gpu-mode
 
 cat > /home/${USERNAME}/dwl-install.sh <<'DWLSCRIPT'
 #!/bin/bash
-DWL_PKGS="foot mako wmenu cliphist swaybg seatd seatd-runit xorg-xwayland ttf-firacode-nerd noto-fonts noto-fonts-cjk noto-fonts-emoji bc neovim htop zoxide fastfetch ffmpeg 7zip wiremix mpv rmpc nwg-look dconf gsettings-desktop-schemas qutebrowser wireguard-tools grim slurp nodejs npm waylock brightnessctl playerctl libnotify tlp tlp-runit xdg-desktop-portal-no-systemd-rtkit xdg-desktop-portal-wlr qt5-wayland qt6-wayland lf bat chafa jq perl-image-exiftool fzf ripgrep fd wl-clipboard lsd lynx poppler imagemagick atool gnupg man-db trash-cli librsvg odt2txt catdoc moreutils ffmpegthumbnailer imv xdg-utils dragon-drag-and-drop unrar perl-file-mimeinfo archivemount"
+DWL_PKGS="foot mako wmenu cliphist swaybg seatd seatd-runit xorg-xwayland ttf-firacode-nerd noto-fonts noto-fonts-cjk noto-fonts-emoji bc neovim htop zoxide fastfetch ffmpeg 7zip wiremix mpv qutebrowser wireguard-tools grim slurp nodejs npm waylock brightnessctl playerctl libnotify tlp tlp-runit xdg-desktop-portal-no-systemd-rtkit xdg-desktop-portal-wlr qt5-wayland qt6-wayland lf bat chafa jq perl-image-exiftool fzf ripgrep fd wl-clipboard lsd lynx poppler imagemagick atool gnupg man-db trash-cli librsvg odt2txt catdoc moreutils ffmpegthumbnailer imv xdg-utils dragon-drag-and-drop unrar perl-file-mimeinfo archivemount"
 
 for pkg in \$DWL_PKGS; do
     yay -S --needed --noconfirm "\$pkg" \
@@ -443,25 +415,6 @@ SUDOERS
 chmod 0440 /etc/sudoers.d/31-resolvconf
 visudo -cf /etc/sudoers.d/31-resolvconf \
     || true
-
-if [ -d /root/theme-src ]; then
-    mkdir -p "/home/${USERNAME}/.local/share/themes"
-    cp -r /root/theme-src "/home/${USERNAME}/.local/share/themes/${THEME_NAME}"
-    chown -R ${USERNAME}:${USERNAME} "/home/${USERNAME}/.local/share"
-    rm -rf /root/theme-src
-
-    su - "${USERNAME}" -c "dbus-run-session -- bash -c '
-        gsettings set org.gnome.desktop.interface gtk-theme \"${THEME_NAME}\" &&
-        gsettings set org.gnome.desktop.interface color-scheme \"prefer-dark\" &&
-        gsettings set org.gnome.desktop.interface font-name \"${THEME_FONT}\"
-    '" || true
-
-    su - "${USERNAME}" -c "dbus-run-session -- nwg-look -x" \
-        || true
-
-else
-    :
-fi
 
 su - "${USERNAME}" -c 'src=\$(mktemp -d) \
     && git clone --recursive --depth 1 https://github.com/akinomyoga/ble.sh.git "\$src" \
@@ -537,13 +490,6 @@ echo 0 > /sys/power/pm_async 2>/dev/null
 exec sv down pm-async-off
 PMASYNC
 
-make_svc mpd-user <<MPDSV
-#!/bin/sh
-export HOME=/home/${USERNAME}
-export XDG_RUNTIME_DIR=/run/user/$(id -u ${USERNAME})
-exec chpst -u ${USERNAME}:${USERNAME} mpd --no-daemon /home/${USERNAME}/.config/mpd/mpd.conf
-MPDSV
-
 sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=0/' /etc/default/grub
 if grep -q '^GRUB_TIMEOUT_STYLE=' /etc/default/grub; then
     sed -i 's/^GRUB_TIMEOUT_STYLE=.*/GRUB_TIMEOUT_STYLE=hidden/' /etc/default/grub
@@ -576,7 +522,7 @@ grub-mkconfig -o /boot/grub/grub.cfg
 chown -R ${USERNAME}:${USERNAME} "/home/${USERNAME}"
 
 rm -f /root/dwl-build.log
-rm -rf /root/dwl-src /root/dotfiles-src /root/theme-src
+rm -rf /root/dwl-src /root/dotfiles-src
 su - "${USERNAME}" -c "yay -Sc --noconfirm" 2>/dev/null || true
 rm -rf "/home/${USERNAME}/.cache/yay"
 find "/home/${USERNAME}" -maxdepth 1 \( -name "*.pkg.tar.*" -o -name "yay-bin" -o -name "ble.sh*" \) -exec rm -rf {} + 2>/dev/null || true
