@@ -125,6 +125,153 @@ for i in 1 2 3; do
 done
 [ "$BASESTRAP_OK" -eq 1 ] || error "basestrap failed."
 fstabgen -U /mnt >> /mnt/etc/fstab
+
+mkdir -p /mnt/usr/local/bin
+cat > /mnt/usr/local/bin/powerctl <<'POWERCTL_EOF'
+#!/bin/sh
+
+set -eu
+
+STATE_FILE="/etc/powerctl/mode"
+
+require_root() {
+    [ "$(id -u)" -eq 0 ] || { echo "powerctl: harus jalan sebagai root" >&2; exit 1; }
+}
+
+write_sysfs() {
+    val="$1"; shift
+    for f in "$@"; do
+        [ -e "$f" ] || continue
+        [ -w "$f" ] || continue
+        printf '%s' "$val" > "$f" 2>/dev/null || true
+    done
+}
+
+set_cpu_governor()   { write_sysfs "$1" /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_governor; }
+set_cpu_epp()        { write_sysfs "$1" /sys/devices/system/cpu/cpu[0-9]*/cpufreq/energy_performance_preference; }
+set_platform_profile(){ write_sysfs "$1" /sys/firmware/acpi/platform_profile; }
+set_sata_alpm()       { write_sysfs "$1" /sys/class/scsi_host/host*/link_power_management_policy; }
+set_pcie_aspm()        { write_sysfs "$1" /sys/module/pcie_aspm/parameters/policy; }
+set_audio_powersave()  { write_sysfs "$1" /sys/module/snd_hda_intel/parameters/power_save; }
+
+set_usb_autosuspend() {
+    mode="$1"; timeout="${2:-2}"
+    for f in /sys/bus/usb/devices/*/power/control; do
+        [ -e "$f" ] || continue
+        if [ "$mode" = "on" ]; then
+            printf 'auto' > "$f" 2>/dev/null || true
+        else
+            printf 'on' > "$f" 2>/dev/null || true
+        fi
+    done
+    if [ "$mode" = "on" ]; then
+        write_sysfs "$((timeout * 1000))" /sys/bus/usb/devices/*/power/autosuspend_delay_ms
+    fi
+}
+
+set_disk_apm() {
+    command -v hdparm >/dev/null 2>&1 || return 0
+    level="$1"
+    for d in /sys/block/sd*; do
+        [ -e "$d" ] || continue
+        dev="/dev/$(basename "$d")"
+        hdparm -B "$level" "$dev" >/dev/null 2>&1 || true
+    done
+}
+
+set_wifi_powersave() {
+    command -v iw >/dev/null 2>&1 || return 0
+    state="$1"
+    for w in /sys/class/net/*/wireless; do
+        [ -e "$w" ] || continue
+        iface=$(basename "$(dirname "$w")")
+        iw dev "$iface" set power_save "$state" >/dev/null 2>&1 || true
+    done
+}
+
+apply_mode() {
+    mode="$1"
+    case "$mode" in
+        powersave)
+            set_cpu_governor powersave
+            set_cpu_epp power
+            set_platform_profile low-power
+            set_sata_alpm min_power
+            set_pcie_aspm powersupersave
+            set_usb_autosuspend on 1
+            set_disk_apm 128
+            set_wifi_powersave on
+            set_audio_powersave 1
+            ;;
+        balanced)
+            set_cpu_governor schedutil
+            set_cpu_epp balance_power
+            set_platform_profile balanced
+            set_sata_alpm med_power_with_dipm
+            set_pcie_aspm default
+            set_usb_autosuspend on 2
+            set_disk_apm 192
+            set_wifi_powersave on
+            set_audio_powersave 1
+            ;;
+        performance)
+            set_cpu_governor performance
+            set_cpu_epp performance
+            set_platform_profile performance
+            set_sata_alpm max_performance
+            set_pcie_aspm performance
+            set_usb_autosuspend off
+            set_disk_apm 254
+            set_wifi_powersave off
+            set_audio_powersave 0
+            ;;
+        ultrapowersave)
+            set_cpu_governor powersave
+            set_cpu_epp power
+            set_platform_profile low-power
+            set_sata_alpm min_power
+            set_pcie_aspm powersupersave
+            set_usb_autosuspend on 0
+            set_disk_apm 1
+            set_wifi_powersave on
+            set_audio_powersave 1
+            ;;
+        *)
+            echo "powerctl: mode tidak dikenal '$mode'" >&2
+            exit 1
+            ;;
+    esac
+    mkdir -p "$(dirname "$STATE_FILE")"
+    printf '%s\n' "$mode" > "$STATE_FILE"
+}
+
+case "${1:-}" in
+    apply)
+        require_root
+        [ -n "${2:-}" ] || { echo "usage: powerctl apply <mode>" >&2; exit 1; }
+        apply_mode "$2"
+        ;;
+    reapply)
+        require_root
+        [ -f "$STATE_FILE" ] || exit 0
+        apply_mode "$(cat "$STATE_FILE")"
+        ;;
+    query)
+        [ -f "$STATE_FILE" ] && cat "$STATE_FILE" || echo "none"
+        ;;
+    *)
+        echo "usage: powerctl {apply <mode>|reapply|query}" >&2
+        exit 1
+        ;;
+esac
+POWERCTL_EOF
+chmod +x /mnt/usr/local/bin/powerctl
+
+mkdir -p /mnt/etc/udev/rules.d
+cat > /mnt/etc/udev/rules.d/90-powerctl.rules <<'POWERCTL_RULES_EOF'
+SUBSYSTEM=="power_supply", ACTION=="add|change", RUN+="/usr/local/bin/powerctl reapply"
+POWERCTL_RULES_EOF
+
 cat > /mnt/root/chroot-setup.sh <<EOF
 #!/bin/bash
 set -e
@@ -385,7 +532,7 @@ rm -f /root/.gpu-mode
 
 cat > /home/${USERNAME}/dwl-install.sh <<'DWLSCRIPT'
 #!/bin/bash
-DWL_PKGS="foot mako wmenu cliphist swaybg seatd seatd-runit xorg-xwayland ttf-firacode-nerd noto-fonts noto-fonts-cjk noto-fonts-emoji bc neovim htop zoxide fastfetch ffmpeg 7zip wiremix mpv qutebrowser wireguard-tools grim slurp nodejs npm waylock brightnessctl playerctl libnotify tlp tlp-runit xdg-desktop-portal-no-systemd-rtkit xdg-desktop-portal-wlr qt5-wayland qt6-wayland lf bat chafa jq perl-image-exiftool fzf ripgrep fd wl-clipboard lsd lynx poppler imagemagick atool gnupg man-db trash-cli librsvg odt2txt catdoc moreutils ffmpegthumbnailer imv xdg-utils dragon-drag-and-drop unrar perl-file-mimeinfo archivemount"
+DWL_PKGS="foot mako wmenu cliphist swaybg seatd seatd-runit xorg-xwayland ttf-firacode-nerd noto-fonts noto-fonts-cjk noto-fonts-emoji bc neovim htop zoxide fastfetch ffmpeg 7zip wiremix mpv qutebrowser wireguard-tools grim slurp nodejs npm waylock brightnessctl playerctl libnotify xdg-desktop-portal-no-systemd-rtkit xdg-desktop-portal-wlr qt5-wayland qt6-wayland lf bat chafa jq perl-image-exiftool fzf ripgrep fd wl-clipboard lsd lynx poppler imagemagick atool gnupg man-db trash-cli librsvg odt2txt catdoc moreutils ffmpegthumbnailer imv xdg-utils dragon-drag-and-drop unrar perl-file-mimeinfo archivemount"
 
 for pkg in \$DWL_PKGS; do
     yay -S --needed --noconfirm "\$pkg" \
@@ -427,8 +574,6 @@ rm -f /etc/sudoers.d/20-wheel-nopass
 
 enable_svc seatd
 usermod -aG seat "${USERNAME}"
-
-enable_svc tlp
 
 cat > /usr/local/bin/usb-automount <<'AUTOMOUNT'
 #!/bin/bash
