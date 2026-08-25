@@ -298,6 +298,70 @@ cmd copyto ${{
 	notify-send "lf" "File(s) copied to $dest"
 }}
 
+cmd paste_force %{{
+	IFS='
+'
+	set -- $(cat ~/.local/share/lf/files)
+	mode="$1"
+	shift
+	if [ $# -lt 1 ]; then
+		lf -remote "send $id echo no files to paste"
+		exit 1
+	fi
+
+	rename_conflict() {
+		base="$1"
+		if [ -n "${base%.*}" ] && [ "$base" != "${base%.*}" ]; then
+			stem="${base%.*}"
+			ext=".${base##*.}"
+		else
+			stem="$base"
+			ext=""
+		fi
+		i=1
+		newname="${stem}_${i}${ext}"
+		while [ -e "./$newname" ]; do
+			i=$((i+1))
+			newname="${stem}_${i}${ext}"
+		done
+		printf '%s' "$newname"
+	}
+
+	for f in "$@"; do
+		name=$(basename -- "$f")
+		dest="./$name"
+		if [ -e "$dest" ]; then
+			clear; tput cup $(($(tput lines)/3)); tput bold
+			printf "\t%s already exists.\n" "$name"
+			printf "\tReplace? [y/N] "
+			read -r REPLY
+			case "$REPLY" in
+			[yY])
+				case "$mode" in
+				copy) cp -rf -- "$f" "$dest" ;;
+				move) mv -f -- "$f" "$dest" ;;
+				esac
+			;;
+			(*)
+				newname=$(rename_conflict "$name")
+				case "$mode" in
+				copy) cp -r -- "$f" "./$newname" ;;
+				move) mv -- "$f" "./$newname" ;;
+				esac
+			;;
+			esac
+		else
+			case "$mode" in
+			copy) cp -r -- "$f" "$dest" ;;
+			move) mv -- "$f" "$dest" ;;
+			esac
+		fi
+	done
+	rm ~/.local/share/lf/files
+	lf -remote "send clear"
+	lf -remote "send $id reload"
+}}
+
 cmd paste_link %{{
 	IFS='
 '
@@ -363,6 +427,7 @@ map <a-d> trash
 map <a-D> shred
 map E extract
 map P paste_link
+map pf paste_force
 map <a-n> push :mkdir<space>
 map <a-t> push $touch<space>
 map <a-r> reload
@@ -417,5 +482,3 @@ map <c-z> stop
 map W &{ nohup "${TERMINAL:-foot}" >/dev/null 2>&1& }
 
 map Y $printf "%s" "$fx" | wl-copy
-
-
