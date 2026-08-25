@@ -14,6 +14,5 @@ static const struct arg args[] = {
 	/* function          format          argument */
 	{ battery_perc,        "BAT %s%%",             "BAT0" },
 	{ battery_state,       " (%s)",                "BAT0" },
-	{ run_command,         " | VOL %s%%",          "wpctl get-volume @DEFAULT_AUDIO_SINK@ | awk '/MUTED/{print 0; exit} {v=$2*100; if (v>100) v=100; if (v<0) v=0; printf \"%.0f\", v}'" },
 	{ datetime,            "   %s   ",             "%a, %b %e   %I:%M:%S %p" },
 };
