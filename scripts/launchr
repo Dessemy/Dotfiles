@@ -3,11 +3,6 @@ set -e
 
 APP_DIRS="/usr/share/applications $HOME/.local/share/applications"
 
-wmenu_themed() {
-    wmenu -i -N '#1a1b26ff' -n '#a9b1d6ff' -M '#ad8ee6ff' -m '#1a1b26ff' \
-        -S '#7aa2f7ff' -s '#1a1b26ff' -f 'FiraCode Nerd Font 14' "$@"
-}
-
 list_apps() {
     for dir in $APP_DIRS; do
         [ -d "$dir" ] || continue
@@ -51,7 +46,7 @@ if ! command -v wmenu >/dev/null 2>&1; then
     exit 1
 fi
 
-chosen=$(printf '%s\n' "$apps" | cut -f1 | wmenu_themed -l 15 -p "Launch>") || exit 0
+chosen=$(printf '%s\n' "$apps" | cut -f1 | wmenu "$@" -l 15 -p "Launch>") || exit 0
 [ -z "$chosen" ] && exit 0
 
 cmd=$(printf '%s\n' "$apps" | awk -F'\t' -v n="$chosen" '$1==n {print $2; exit}')

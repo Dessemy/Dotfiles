@@ -1,10 +1,6 @@
 #!/bin/sh
 set -e
 
-wmenu_themed() {
-    wmenu -i -N '#1a1b26ff' -n '#a9b1d6ff' -M '#ad8ee6ff' -m '#1a1b26ff' \
-        -S '#7aa2f7ff' -s '#1a1b26ff' -f 'FiraCode Nerd Font 14' "$@"
-}
 STATE_DIR="$HOME/.cache/powermode-revert"
 
 notify_power() {
@@ -108,6 +104,8 @@ set_refresh_rate() {
         wlr-randr --output "$output" --mode "${resolution}@${rate}" >/dev/null 2>&1 || true
     done
 }
+
+# ---------- gpu mode ----------
 
 capture_gpu_state() {
     command -v envycontrol >/dev/null 2>&1 || { : > "$STATE_DIR/gpu"; return 0; }
@@ -354,7 +352,7 @@ if ! command -v wmenu >/dev/null 2>&1; then
 fi
 
 chosen=$(printf 'Performance\nBalanced\nPowersave\nUltrapowersave\n' | \
-    wmenu_themed -l 4 -p "Power Mode>") || exit 0
+    wmenu "$@" -l 4 -p "Power Mode>") || exit 0
 
 [ -z "$chosen" ] && exit 0
 
