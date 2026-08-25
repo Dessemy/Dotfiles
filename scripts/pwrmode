@@ -184,51 +184,20 @@ set_kernel() {
     sudo grub-set-default "$id" >/dev/null 2>&1 || true
 }
 
-capture_tlp_state() {
-    if sudo test -f /etc/tlp.d/90-power-mode-override.conf; then
-        sudo cp /etc/tlp.d/90-power-mode-override.conf "$STATE_DIR/tlp.conf" 2>/dev/null || true
-        echo present > "$STATE_DIR/tlp-existed"
+capture_powerctl_state() {
+    if sudo test -f /etc/powerctl/mode; then
+        sudo cp /etc/powerctl/mode "$STATE_DIR/powerctl-mode" 2>/dev/null || true
+        echo present > "$STATE_DIR/powerctl-existed"
     else
-        echo absent > "$STATE_DIR/tlp-existed"
+        echo absent > "$STATE_DIR/powerctl-existed"
     fi
 }
 
-restore_tlp_state() {
-    [ -f "$STATE_DIR/tlp-existed" ] || return 0
-    if [ "$(cat "$STATE_DIR/tlp-existed")" = "present" ]; then
-        sudo cp "$STATE_DIR/tlp.conf" /etc/tlp.d/90-power-mode-override.conf 2>/dev/null || true
-    else
-        sudo rm -f /etc/tlp.d/90-power-mode-override.conf 2>/dev/null || true
+restore_powerctl_state() {
+    [ -f "$STATE_DIR/powerctl-existed" ] || return 0
+    if [ "$(cat "$STATE_DIR/powerctl-existed")" = "present" ]; then
+        sudo powerctl apply "$(cat "$STATE_DIR/powerctl-mode")" >/dev/null 2>&1 || true
     fi
-    sudo tlp start >/dev/null 2>&1 || true
-}
-
-set_tlp_persistent() {
-    code="$1"
-    sudo mkdir -p /etc/tlp.d
-    sudo tee /etc/tlp.d/90-power-mode-override.conf >/dev/null <<TLPCONF
-TLP_DEFAULT_MODE=$code
-TLP_PERSISTENT_DEFAULT=1
-TLPCONF
-}
-
-capture_cpu_sata_state() {
-    : > "$STATE_DIR/cpu-sata"
-    sudo sh -c '
-        for f in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference \
-                 /sys/class/scsi_host/host*/link_power_management_policy; do
-            [ -f "$f" ] && printf "%s\t%s\n" "$f" "$(cat "$f" 2>/dev/null)"
-        done
-    ' > "$STATE_DIR/cpu-sata" 2>/dev/null || true
-}
-
-restore_cpu_sata_state() {
-    [ -s "$STATE_DIR/cpu-sata" ] || return 0
-    sudo sh -c '
-        while IFS="$(printf "\t")" read -r f v; do
-            [ -n "$f" ] && [ -n "$v" ] && [ -w "$f" ] && printf "%s" "$v" > "$f" 2>/dev/null
-        done < "'"$STATE_DIR"'/cpu-sata"
-    ' || true
 }
 
 backup_all_state() {
@@ -237,16 +206,14 @@ backup_all_state() {
     capture_outputs_state
     capture_gpu_state
     capture_grub_state
-    capture_tlp_state
-    capture_cpu_sata_state
+    capture_powerctl_state
 }
 
 revert_all_state() {
     restore_outputs_state
     restore_gpu_state
     restore_grub_state
-    restore_tlp_state
-    restore_cpu_sata_state
+    restore_powerctl_state
     rm -rf "$STATE_DIR"
     notify_power "Cancelled — reverted to previous settings"
 }
@@ -286,41 +253,28 @@ apply_power_mode() {
 
     case "$mode" in
         Powersave)
-            sudo tlp power-saver || return 1
-            set_tlp_persistent SAV
+            sudo powerctl apply powersave || return 1
             set_refresh_rate lowest
             set_gpu_mode integrated
             set_kernel default
             ;;
         Balanced)
-            sudo tlp balanced || return 1
-            set_tlp_persistent BAL
+            sudo powerctl apply balanced || return 1
             set_refresh_rate lowest
             set_gpu_mode hybrid
             set_kernel default
             ;;
         Performance)
-            sudo tlp performance || return 1
-            set_tlp_persistent PRF
+            sudo powerctl apply performance || return 1
             set_refresh_rate highest
             set_gpu_mode nvidia
             set_kernel zen
             ;;
         Ultrapowersave)
-            sudo tlp power-saver || return 1
-            set_tlp_persistent SAV
+            sudo powerctl apply ultrapowersave || return 1
             set_refresh_rate lowest
             set_gpu_mode integrated
             set_kernel default
-
-            sudo sh -c '
-                for f in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do
-                    [ -w "$f" ] && printf "%s" power > "$f" 2>/dev/null
-                done
-                for f in /sys/class/scsi_host/host*/link_power_management_policy; do
-                    [ -w "$f" ] && printf "%s" min_power > "$f" 2>/dev/null
-                done
-            ' || true
             ;;
     esac
 
@@ -334,8 +288,8 @@ apply_power_mode() {
     fi
 }
 
-if ! command -v tlp >/dev/null 2>&1; then
-    notify-send -u critical "Power Mode Error" "TLP is not installed"
+if ! command -v powerctl >/dev/null 2>&1; then
+    notify-send -u critical "Power Mode Error" "powerctl is not installed"
     exit 1
 fi
 
