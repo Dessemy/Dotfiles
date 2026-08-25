@@ -532,7 +532,7 @@ rm -f /root/.gpu-mode
 
 cat > /home/${USERNAME}/dwl-install.sh <<'DWLSCRIPT'
 #!/bin/bash
-DWL_PKGS="foot mako wmenu cliphist swaybg seatd seatd-runit xorg-xwayland ttf-firacode-nerd noto-fonts noto-fonts-cjk noto-fonts-emoji bc neovim htop zoxide fastfetch ffmpeg 7zip wiremix mpv qutebrowser wireguard-tools grim slurp nodejs npm waylock brightnessctl playerctl libnotify xdg-desktop-portal-no-systemd-rtkit xdg-desktop-portal-wlr qt5-wayland qt6-wayland lf bat chafa jq perl-image-exiftool fzf ripgrep fd wl-clipboard lsd lynx poppler imagemagick atool gnupg man-db trash-cli librsvg odt2txt catdoc moreutils ffmpegthumbnailer imv xdg-utils dragon-drag-and-drop unrar perl-file-mimeinfo archivemount"
+DWL_PKGS="foot mako wmenu cliphist swaybg seatd seatd-runit xorg-xwayland ttf-firacode-nerd noto-fonts noto-fonts-cjk noto-fonts-emoji bc neovim htop zoxide fastfetch ffmpeg 7zip wiremix mpv qutebrowser wireguard-tools grim slurp nodejs npm waylock brightnessctl libnotify xdg-desktop-portal-no-systemd-rtkit xdg-desktop-portal-wlr qt5-wayland qt6-wayland lf bat chafa jq perl-image-exiftool fzf ripgrep fd wl-clipboard lsd lynx poppler imagemagick atool gnupg man-db trash-cli librsvg odt2txt catdoc moreutils ffmpegthumbnailer imv xdg-utils dragon-drag-and-drop unrar perl-file-mimeinfo archivemount"
 
 for pkg in \$DWL_PKGS; do
     yay -S --needed --noconfirm "\$pkg" \
