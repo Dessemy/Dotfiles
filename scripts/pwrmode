@@ -133,8 +133,6 @@ set_gpu_mode() {
     fi
 }
 
-# ---------- kernel / grub default ----------
-
 capture_grub_state() {
     sudo test -f /boot/grub/grub.cfg 2>/dev/null || { : > "$STATE_DIR/grub"; return 0; }
     sudo grub-editenv list 2>/dev/null | sed -n 's/^saved_entry=//p' > "$STATE_DIR/grub" || : > "$STATE_DIR/grub"
