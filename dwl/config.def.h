@@ -108,7 +108,7 @@ static const enum libinput_config_tap_button_map button_map = LIBINPUT_CONFIG_TA
 
 #define SHCMD(cmd) { .v = (const char*[]){ "/bin/sh", "-c", cmd, NULL } }
 
-#define WMENU_THEME "-i -N '#1a1b26ff' -n '#a9b1d6ff' -M '#ad8ee6ff' -m '#1a1b26ff' -S '#7aa2f7ff' -s '#1a1b26ff' -f 'FiraCode Nerd Font 14'"
+#define WMENU_THEME "-i -N '#1a1b26ff' -n '#a9b1d6ff' -M '#ad8ee6ff' -m '#1a1b26ff' -S '#7aa2f7ff' -s '#1a1b26ff' -f 'FiraCode Nerd Font 16'"
 
 static const Key keys[] = {
 	{ MODKEY,                              XKB_KEY_Return,         spawn,            {.v = (const char*[]){ "foot", NULL }} },
