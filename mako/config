@@ -7,3 +7,6 @@ border-size=0
 
 default-timeout=5000
 ignore-timeout=1
+
+[app-name=brightness]
+progress-color=over #e0af68
