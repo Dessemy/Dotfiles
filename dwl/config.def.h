@@ -7,7 +7,8 @@ static const int bypass_surface_visibility = 0;
 static const int smartgaps                 = 0;
 static int gaps                            = 1;
 static const unsigned int gappx            = 3;
-static const unsigned int borderpx         = 0;
+static const unsigned int borderpx         = 2;
+static const unsigned int barborderpx      = 2;
 static const int showbar                   = 1;
 static const int topbar                    = 1;
 static const char *fonts[]                 = {"FiraCode Nerd Font:style=Bold:size=16"};
@@ -52,6 +53,8 @@ static uint32_t colors[][3] = {
     [SchemeUrg]   = { 0,        0,       0x770000ff },
     [SchemeUnder] = { col_mag,  col_bg,  col_mag   },
     [SchemeBg]    = { col_bg,  col_bg,  col_bg   },
+    [SchemeFloat] = { col_ylw,  col_bg,  col_ylw   },
+    [SchemeMono]  = { col_grn,  col_bg,  col_grn   },
 };
 
 static char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9" };

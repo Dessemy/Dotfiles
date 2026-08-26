@@ -83,7 +83,7 @@
 #define TEXTW(mon, text)        (drwl_font_getwidth(mon->drw, text) + mon->lrpad)
 
 /* enums */
-enum { SchemeNorm, SchemeSel, SchemeOcc, SchemeUrg, SchemeUnder, SchemeLast, SchemeBg };
+enum { SchemeNorm, SchemeSel, SchemeOcc, SchemeUrg, SchemeUnder, SchemeLast, SchemeBg, SchemeFloat, SchemeMono };
 // enum { SchemeNorm, SchemeSel, SchemeUrg }; /* color schemes */
 enum { CurNormal, CurPressed, CurMove, CurResize }; /* cursor */
 enum { XDGShell, LayerShell, X11 }; /* client types */
@@ -1679,6 +1679,15 @@ drawbar(Monitor *m)
     // Always clear the entire bar with background color first
     drwl_setscheme(m->drw, colors[SchemeBg]); // or any scheme that uses col_bg
     drwl_rect(m->drw, 0, 0, m->b.width, m->b.height, 1, 0);
+
+    // Bar border (matches active window border color)
+    if (barborderpx > 0) {
+        drwl_setscheme(m->drw, (uint32_t[]){col_mag, col_mag, col_mag});
+        drwl_rect(m->drw, 0, 0, m->b.width, barborderpx, 1, 0);                                   /* top */
+        drwl_rect(m->drw, 0, m->b.height - barborderpx, m->b.width, barborderpx, 1, 0);            /* bottom */
+        drwl_rect(m->drw, 0, 0, barborderpx, m->b.height, 1, 0);                                   /* left */
+        drwl_rect(m->drw, m->b.width - barborderpx, 0, barborderpx, m->b.height, 1, 0);            /* right */
+    }
     
     if (m == selmon) {
         char stext_copy[sizeof(stext)];
@@ -1732,9 +1741,9 @@ drawbar(Monitor *m)
 	}
 	w = TEXTW(m, m->ltsymbol);
 	if (!m->lt[m->sellt]->arrange)
-		drwl_setscheme(m->drw, colors[SchemeUrg]);    /* floating (><>) */
+		drwl_setscheme(m->drw, colors[SchemeFloat]);  /* floating (><>) */
 	else if (m->lt[m->sellt]->arrange == monocle)
-		drwl_setscheme(m->drw, colors[SchemeOcc]);    /* monocle ([M]) */
+		drwl_setscheme(m->drw, colors[SchemeMono]);   /* monocle ([M]) */
 	else
 		drwl_setscheme(m->drw, colors[SchemeSel]);    /* tile ([]=)   */
 	x = drwl_text(m->drw, x, 0, w, m->b.height, m->lrpad / 2, m->ltsymbol, 0);
@@ -2173,16 +2182,12 @@ void
 monocle(Monitor *m)
 {
 	Client *c;
-	int n = 0;
 
 	wl_list_for_each(c, &clients, link) {
 		if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen)
 			continue;
 		resize(c, m->w, 0);
-		n++;
 	}
-	if (n)
-		snprintf(m->ltsymbol, LENGTH(m->ltsymbol), "[%d]", n);
 	if ((c = focustop(m)))
 		wlr_scene_node_raise_to_top(&c->scene->node);
 }
