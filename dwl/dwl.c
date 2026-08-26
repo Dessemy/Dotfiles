@@ -1667,7 +1667,7 @@ void
 drawbar(Monitor *m)
 {
     int x, w, tw = 0;
-    uint32_t i, occ = 0, urg = 0;
+    uint32_t i, urg = 0;
     Client *c;
     Buffer *buf;
     
@@ -1719,7 +1719,6 @@ drawbar(Monitor *m)
     wl_list_for_each(c, &clients, link) {
         if (c->mon != m)
             continue;
-        occ |= c->tags;
         if (c->isurgent)
             urg |= c->tags;
     }
@@ -1727,14 +1726,11 @@ drawbar(Monitor *m)
     c = focustop(m);
     for (i = 0; i < LENGTH(tags); i++) {
         const int selected = (m->tagset[m->seltags] & (1 << i)) != 0;
-        const int occupied = (occ & (1 << i)) != 0;
         w = TEXTW(m, tags[i]);
         if (selected) {
-            drwl_setscheme(m->drw, colors[SchemeSel]);
-        } else if (occupied) {
-            drwl_setscheme(m->drw, colors[SchemeOcc]);
+            drwl_setscheme(m->drw, (uint32_t[]){col_grn, col_mag, col_mag});
         } else {
-            drwl_setscheme(m->drw, colors[SchemeNorm]);
+            drwl_setscheme(m->drw, (uint32_t[]){col_grn, col_bg, col_brblk});
         }
         drwl_text(m->drw, x, 0, w, m->b.height, m->lrpad / 2, tags[i], urg & (1 << i));
 		x += w;

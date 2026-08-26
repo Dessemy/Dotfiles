@@ -7,8 +7,8 @@ static const int bypass_surface_visibility = 0;
 static const int smartgaps                 = 0;
 static int gaps                            = 1;
 static const unsigned int gappx            = 3;
-static const unsigned int borderpx         = 2;
-static const unsigned int barborderpx      = 2;
+static const unsigned int borderpx         = 0;
+static const unsigned int barborderpx      = 0;
 static const int showbar                   = 1;
 static const int topbar                    = 1;
 static const char *fonts[]                 = {"FiraCode Nerd Font:style=Bold:size=16"};
@@ -127,11 +127,11 @@ static const Key keys[] = {
 	{ MODKEY|WLR_MODIFIER_CTRL,            XKB_KEY_p,              spawn,            SHCMD("foot -e $HOME/.config/scripts/pwrmode " WMENU_THEME) },
 	{ MODKEY,                              XKB_KEY_Escape,         spawn,            SHCMD("waylock -init-color 0x1a1b26 -input-color 0x7aa2f7 -input-alt-color 0xad8ee6 -fail-color 0xf7768e") },
 
-	{ 0,                                   XKB_KEY_XF86MonBrightnessUp,   spawn,     SHCMD("brightnessctl set +5% && val=$(brightnessctl -m | cut -d, -f4 | tr -d %) && notify-send -a brightness -h string:x-canonical-private-synchronous:brightness -h int:value:$val -t 1500 ' ' ' '") },
-	{ 0,                                   XKB_KEY_XF86MonBrightnessDown, spawn,     SHCMD("brightnessctl set 5%- && val=$(brightnessctl -m | cut -d, -f4 | tr -d %) && notify-send -a brightness -h string:x-canonical-private-synchronous:brightness -h int:value:$val -t 1500 ' ' ' '") },
+	{ 0,                                   XKB_KEY_XF86MonBrightnessUp,   spawn,     SHCMD("brightnessctl set +5% && val=$(brightnessctl -m | cut -d, -f4 | tr -d %) && notify-send -a brightness -h string:x-canonical-private-synchronous:brightness -h int:value:$val -h string:bgcolor:'#e0af68' -h string:fgcolor:'#e0af68' -h string:frcolor:'#e0af68' -t 1500 ' ' ' '") },
+	{ 0,                                   XKB_KEY_XF86MonBrightnessDown, spawn,     SHCMD("brightnessctl set 5%- && val=$(brightnessctl -m | cut -d, -f4 | tr -d %) && notify-send -a brightness -h string:x-canonical-private-synchronous:brightness -h int:value:$val -h string:bgcolor:'#e0af68' -h string:fgcolor:'#e0af68' -h string:frcolor:'#e0af68' -t 1500 ' ' ' '") },
 
-	{ 0,                                   XKB_KEY_XF86AudioRaiseVolume,  spawn,     SHCMD("wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+ && vol=$(wpctl get-volume @DEFAULT_AUDIO_SINK@ | awk '{printf $2*100}' | cut -d. -f1) && notify-send -a volume -h string:x-canonical-private-synchronous:volume -h int:value:$vol -t 1500 ' ' ' '") },
-	{ 0,                                   XKB_KEY_XF86AudioLowerVolume,  spawn,     SHCMD("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- && vol=$(wpctl get-volume @DEFAULT_AUDIO_SINK@ | awk '{printf $2*100}' | cut -d. -f1) && notify-send -a volume -h string:x-canonical-private-synchronous:volume -h int:value:$vol -t 1500 ' ' ' '") },
+	{ 0,                                   XKB_KEY_XF86AudioRaiseVolume,  spawn,     SHCMD("wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+ && vol=$(wpctl get-volume @DEFAULT_AUDIO_SINK@ | awk '{printf $2*100}' | cut -d. -f1) && notify-send -a volume -h string:x-canonical-private-synchronous:volume -h int:value:$vol -h string:bgcolor:'#7aa2f7' -h string:fgcolor:'#7aa2f7' -h string:frcolor:'#7aa2f7' -t 1500 ' ' ' '") },
+	{ 0,                                   XKB_KEY_XF86AudioLowerVolume,  spawn,     SHCMD("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- && vol=$(wpctl get-volume @DEFAULT_AUDIO_SINK@ | awk '{printf $2*100}' | cut -d. -f1) && notify-send -a volume -h string:x-canonical-private-synchronous:volume -h int:value:$vol -h string:bgcolor:'#7aa2f7' -h string:fgcolor:'#7aa2f7' -h string:frcolor:'#7aa2f7' -t 1500 ' ' ' '") },
 	{ 0,                                   XKB_KEY_XF86AudioMute,         spawn,     SHCMD("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle && st=$(wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -q MUTED && echo Muted || echo Unmuted) && notify-send -a volume -h string:x-canonical-private-synchronous:volume -t 1500 Volume $st") },
 	{ 0,                                   XKB_KEY_XF86AudioMicMute,      spawn,     SHCMD("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle && st=$(wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -q MUTED && echo Muted || echo Unmuted) && notify-send -a mic -h string:x-canonical-private-synchronous:mic -t 1500 Microphone $st") },
 
