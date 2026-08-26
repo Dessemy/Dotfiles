@@ -1731,7 +1731,12 @@ drawbar(Monitor *m)
 		x += w;
 	}
 	w = TEXTW(m, m->ltsymbol);
-	drwl_setscheme(m->drw, colors[SchemeNorm]);
+	if (!m->lt[m->sellt]->arrange)
+		drwl_setscheme(m->drw, colors[SchemeUrg]);    /* floating (><>) */
+	else if (m->lt[m->sellt]->arrange == monocle)
+		drwl_setscheme(m->drw, colors[SchemeOcc]);    /* monocle ([M]) */
+	else
+		drwl_setscheme(m->drw, colors[SchemeSel]);    /* tile ([]=)   */
 	x = drwl_text(m->drw, x, 0, w, m->b.height, m->lrpad / 2, m->ltsymbol, 0);
 
 	if ((w = m->b.width - tw - x) > m->b.height) {
