@@ -112,7 +112,6 @@ typedef struct {
 
 	Monitor *mon;
 	struct wlr_scene_tree *scene;
-	struct wlr_scene_rect *border[4]; /* top, bottom, left, right */
 	struct wlr_scene_tree *scene_surface;
 	struct wl_list link;
 	struct wl_list flink;
@@ -1393,7 +1392,7 @@ createnotify(struct wl_listener *listener, void *data)
 	/* Allocate a Client for this surface */
 	c = toplevel->base->data = ecalloc(1, sizeof(*c));
 	c->surface.xdg = toplevel->base;
-	c->bw = borderpx;
+	c->bw = 0;
 
 	LISTEN(&toplevel->base->surface->events.commit, &c->commit, commitnotify);
 	LISTEN(&toplevel->base->surface->events.map, &c->map, mapnotify);
@@ -1667,7 +1666,7 @@ void
 drawbar(Monitor *m)
 {
     int x, w, tw = 0;
-    uint32_t i, urg = 0;
+    uint32_t i, occ = 0, urg = 0;
     Client *c;
     Buffer *buf;
     
@@ -1679,15 +1678,6 @@ drawbar(Monitor *m)
     // Always clear the entire bar with background color first
     drwl_setscheme(m->drw, colors[SchemeBg]); // or any scheme that uses col_bg
     drwl_rect(m->drw, 0, 0, m->b.width, m->b.height, 1, 0);
-
-    // Bar border (matches active window border color)
-    if (barborderpx > 0) {
-        drwl_setscheme(m->drw, (uint32_t[]){col_mag, col_mag, col_mag});
-        drwl_rect(m->drw, 0, 0, m->b.width, barborderpx, 1, 0);                                   /* top */
-        drwl_rect(m->drw, 0, m->b.height - barborderpx, m->b.width, barborderpx, 1, 0);            /* bottom */
-        drwl_rect(m->drw, 0, 0, barborderpx, m->b.height, 1, 0);                                   /* left */
-        drwl_rect(m->drw, m->b.width - barborderpx, 0, barborderpx, m->b.height, 1, 0);            /* right */
-    }
     
     if (m == selmon) {
         char stext_copy[sizeof(stext)];
@@ -1719,6 +1709,7 @@ drawbar(Monitor *m)
     wl_list_for_each(c, &clients, link) {
         if (c->mon != m)
             continue;
+        occ |= c->tags;
         if (c->isurgent)
             urg |= c->tags;
     }
@@ -1726,13 +1717,14 @@ drawbar(Monitor *m)
     c = focustop(m);
     for (i = 0; i < LENGTH(tags); i++) {
         const int selected = (m->tagset[m->seltags] & (1 << i)) != 0;
+        const int occupied = (occ & (1 << i)) != 0;
         w = TEXTW(m, tags[i]);
-        if (selected) {
-            drwl_setscheme(m->drw, (uint32_t[]){col_grn, col_mag, col_mag});
-        } else {
-            drwl_setscheme(m->drw, (uint32_t[]){col_grn, col_bg, col_brblk});
-        }
-        drwl_text(m->drw, x, 0, w, m->b.height, m->lrpad / 2, tags[i], urg & (1 << i));
+        drwl_setscheme(m->drw, (uint32_t[]){
+            occupied ? 0x7aa2f7ff : 0xa9b1d6ff,
+            selected ? 0x9333eaff : 0x1a1b26ff,
+            selected ? 0x9333eaff : 0x444b6aff
+        });
+        drwl_text(m->drw, x, 4, w, m->b.height - 8, m->lrpad / 2, tags[i], urg & (1 << i));
 		x += w;
 	}
 	w = TEXTW(m, m->ltsymbol);
@@ -1800,11 +1792,6 @@ focusclient(Client *c, int lift)
 		wl_list_insert(&fstack, &c->flink);
 		selmon = c->mon;
 		c->isurgent = 0;
-
-		/* Don't change border color if there is an exclusive focus or we are
-		 * handling a drag operation */
-		if (!exclusive_focus && !seat->drag)
-			client_set_border_color(c, (float[])COLOR(colors[SchemeSel][ColBorder]));
 	}
 
 	/* Deactivate old client if focus is changing */
@@ -1819,7 +1806,6 @@ focusclient(Client *c, int lift)
 		/* Don't deactivate old client if the new one wants focus, as this causes issues with winecfg
 		 * and probably other clients */
 		} else if (old_c && !client_is_unmanaged(old_c) && (!c || !client_wants_focus(c))) {
-			client_set_border_color(old_c, (float[])COLOR(colors[SchemeNorm][ColBorder]));
 			client_activate_surface(old, 0);
 		}
 	}
@@ -2124,12 +2110,6 @@ mapnotify(struct wl_listener *listener, void *data)
 			exclusive_focus = c;
 		}
 		goto unset_fullscreen;
-	}
-
-	for (i = 0; i < 4; i++) {
-		c->border[i] = wlr_scene_rect_create(c->scene, 0, 0,
-			(float[])COLOR(colors[c->isurgent ? SchemeUrg : SchemeNorm][ColBorder]));
-		c->border[i]->node.data = c;
 	}
 
 	/* Initialize client geometry with room for border */
@@ -2510,16 +2490,9 @@ resize(Client *c, struct wlr_box geo, int interact)
 	c->geom = geo;
 	applybounds(c, bbox);
 
-	/* Update scene-graph, including borders */
+	/* Update scene-graph */
 	wlr_scene_node_set_position(&c->scene->node, c->geom.x, c->geom.y);
 	wlr_scene_node_set_position(&c->scene_surface->node, c->bw, c->bw);
-	wlr_scene_rect_set_size(c->border[0], c->geom.width, c->bw);
-	wlr_scene_rect_set_size(c->border[1], c->geom.width, c->bw);
-	wlr_scene_rect_set_size(c->border[2], c->bw, c->geom.height - 2 * c->bw);
-	wlr_scene_rect_set_size(c->border[3], c->bw, c->geom.height - 2 * c->bw);
-	wlr_scene_node_set_position(&c->border[1]->node, 0, c->geom.height - c->bw);
-	wlr_scene_node_set_position(&c->border[2]->node, 0, c->bw);
-	wlr_scene_node_set_position(&c->border[3]->node, c->geom.width - c->bw, c->bw);
 
 	/* this is a no-op if size hasn't changed */
 	c->resize = client_set_size(c, c->geom.width - 2 * c->bw,
@@ -2620,7 +2593,7 @@ setfullscreen(Client *c, int fullscreen)
 	c->isfullscreen = fullscreen;
 	if (!c->mon || !client_surface(c)->mapped)
 		return;
-	c->bw = fullscreen ? 0 : borderpx;
+	c->bw = 0;
 	client_set_fullscreen(c, fullscreen);
 	wlr_scene_node_reparent(&c->scene->node, layers[c->isfullscreen
 			? LyrFS : c->isfloating ? LyrFloat : LyrTile]);
@@ -3281,9 +3254,6 @@ urgent(struct wl_listener *listener, void *data)
 
 	c->isurgent = 1;
 	drawbars();
-
-	if (client_surface(c)->mapped)
-		client_set_border_color(c, (float[])COLOR(colors[SchemeUrg][ColBorder]));
 }
 
 void
@@ -3454,7 +3424,7 @@ createnotifyx11(struct wl_listener *listener, void *data)
 	c = xsurface->data = ecalloc(1, sizeof(*c));
 	c->surface.xwayland = xsurface;
 	c->type = X11;
-	c->bw = client_is_unmanaged(c) ? 0 : borderpx;
+	c->bw = 0;
 
 	/* Listen to the various events it can emit */
 	LISTEN(&xsurface->events.associate, &c->associate, associatex11);
@@ -3485,9 +3455,6 @@ sethints(struct wl_listener *listener, void *data)
 
 	c->isurgent = xcb_icccm_wm_hints_get_urgency(c->surface.xwayland->hints);
 	drawbars();
-
-	if (c->isurgent && surface && surface->mapped)
-		client_set_border_color(c, (float[])COLOR(colors[SchemeUrg][ColBorder]));
 }
 
 void

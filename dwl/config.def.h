@@ -7,8 +7,6 @@ static const int bypass_surface_visibility = 0;
 static const int smartgaps                 = 0;
 static int gaps                            = 1;
 static const unsigned int gappx            = 3;
-static const unsigned int borderpx         = 0;
-static const unsigned int barborderpx      = 0;
 static const int showbar                   = 1;
 static const int topbar                    = 1;
 static const char *fonts[]                 = {"FiraCode Nerd Font:style=Bold:size=16"};
