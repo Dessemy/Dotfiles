@@ -4,9 +4,6 @@
 <head>
   <title>Homepage</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
   <style>
     html, body {
       background-color: #1a1b26;
@@ -17,7 +14,7 @@
     ::-webkit-scrollbar {
       display: none;
     }
-    a, p {
+    a, p, span {
       font-family: "FiraCode Nerd Font Propo Bold";
       font-size: 24px;
       text-align: center;
@@ -43,23 +40,17 @@
       width: 50%;
       text-align: center;
     }
-    .ascii {
-      color: #7aa2f7;
-      font-family: "Press Start 2P", "FiraCode Nerd Font", monospace;
-      font-size: 32px;
-      letter-spacing: 4px;
-      text-transform: uppercase;
-      line-height: 1.4;
-      white-space: pre;
-      display: inline-block;
-      text-align: center;
+    .logo {
+      max-width: 420px;
+      width: 60%;
+      height: auto;
     }
     .links {
       margin-top: 60px;
     }
-    .links a {
+    .links a, .links span {
       margin: 0 15px;
-      font-size: 32px;
+      font-size: 72px;
     }
   </style>
 </head>
@@ -67,11 +58,11 @@
 <body>
   <br><br><br>
   <div class="icon">
-    <pre class="ascii">qutebrowser</pre>
+    <img class="logo" src="logo.png" alt="qb">
   </div>
   <br><br>
   <div class="links">
-    <a class="search" href="https://duckduckgo.com" target="_blank" rel="noopener noreferrer">[o] Search</a>
+    <span class="search">[o] Search</span>
   </div>
 </body>
 
