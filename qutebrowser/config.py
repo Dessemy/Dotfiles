@@ -2,7 +2,7 @@ import os.path
 
 config.load_autoconfig(True)
 
-font = "FiraCode Nerd Font"
+font = "FiraCode Nerd Font Medium"
 
 base00 = "#1a1b26"
 base01 = "#16161e"
@@ -163,7 +163,7 @@ c.colors.tabs.selected.even.fg = base05
 c.colors.tabs.selected.even.bg = base02
 
 c.fonts.default_family = font
-c.fonts.default_size = "14pt"
+c.fonts.default_size = "16pt"
 
 c.fonts.web.family.standard = font
 c.fonts.web.family.serif = font
