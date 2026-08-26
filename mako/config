@@ -2,6 +2,11 @@ font=FiraCode Nerd Font Medium 16
 background-color=#1a1b26
 text-color=#7aa2f7
 progress-color=over #7aa2f7
+width=350
+height=110
+
+margin=10
+padding=10
 
 border-size=0
 
