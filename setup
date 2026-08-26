@@ -385,6 +385,32 @@ enable_svc bluetoothd
 
 usermod -aG audio,video,lp,storage "${USERNAME}"
 
+# Sistem ini tidak pakai rtkit-daemon (lihat xdg-desktop-portal-no-systemd-rtkit),
+# jadi matikan rt.prio di module-rt supaya PipeWire/WirePlumber tidak coba-coba
+# konek ke RTKit lewat D-Bus dan spam warning ServiceUnknown tiap login.
+mkdir -p /etc/pipewire/pipewire.conf.d /etc/pipewire/pipewire-pulse.conf.d /etc/wireplumber/wireplumber.conf.d
+cat > /etc/pipewire/pipewire.conf.d/99-no-rtkit.conf <<'PWNORTKIT'
+context.modules = [
+    { name = libpipewire-module-rt
+        args = {
+            rt.prio = 0
+        }
+        flags = [ ifexists nofail ]
+    }
+]
+PWNORTKIT
+cp /etc/pipewire/pipewire.conf.d/99-no-rtkit.conf /etc/pipewire/pipewire-pulse.conf.d/99-no-rtkit.conf
+cat > /etc/wireplumber/wireplumber.conf.d/99-no-rtkit.conf <<'WPNORTKIT'
+context.modules = [
+    { name = libpipewire-module-rt
+        args = {
+            rt.prio = 0
+        }
+        flags = [ ifexists nofail ]
+    }
+]
+WPNORTKIT
+
 cat >> /etc/security/limits.conf <<LIMITSCONF
 ${USERNAME}    soft    nofile  524288
 ${USERNAME}    hard    nofile  524288
