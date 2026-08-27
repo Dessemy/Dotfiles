@@ -14,7 +14,7 @@
         }
     },
     "display": {
-        "separator": "  ",
+        "separator": " ",
         "color": {
             "keys": "#9ece6a",
             "title": "#7aa2f7",
