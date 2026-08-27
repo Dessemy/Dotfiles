@@ -30,6 +30,26 @@ opt.shiftwidth = 2
 opt.tabstop = 2
 opt.winborder = "single"
 
+vim.api.nvim_create_autocmd("FileType", {
+  desc = "Use PEP8 4-space indentation for Python files",
+  pattern = "python",
+  callback = function()
+    vim.opt_local.shiftwidth = 4
+    vim.opt_local.tabstop = 4
+  end,
+})
+
+vim.api.nvim_create_autocmd("FileType", {
+  desc = "Keymap to run the current Python file in a terminal split",
+  pattern = "python",
+  callback = function(args)
+    vim.keymap.set("n", "<leader>pr", function()
+      vim.cmd("write")
+      vim.cmd("split | terminal python3 " .. vim.fn.shellescape(vim.fn.expand("%")))
+    end, { buffer = args.buf, desc = "Run Python file" })
+  end,
+})
+
 vim.api.nvim_create_autocmd("TextYankPost", {
   desc = "Highlight yanked text",
   group = vim.api.nvim_create_augroup("kickstart-highlight-yank", { clear = true }),
@@ -305,7 +325,9 @@ require("lazy").setup({
     config = function()
       local dap, dapui = require("dap"), require("dapui")
       dapui.setup()
-      require("dap-python").setup()
+
+      local mason_debugpy = vim.fn.stdpath("data") .. "/mason/packages/debugpy/venv/bin/python"
+      require("dap-python").setup(mason_debugpy)
       require("dap-go").setup()
 
       dap.listeners.after.event_initialized["dapui_config"] = function()
