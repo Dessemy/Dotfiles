@@ -1,4 +1,3 @@
-
 vim.g.mapleader = " "
 vim.g.maplocalleader = " "
 
@@ -84,6 +83,33 @@ require("lazy").setup({
       require("mini.comment").setup()
       require("mini.surround").setup()
       require("mini.icons").setup()
+
+      local starter = require("mini.starter")
+      starter.setup({
+        evaluate_single = true,
+        header = "NEOVIM",
+        items = {
+          starter.sections.builtin_actions(),
+          starter.sections.recent_files(5, false),
+        },
+        content_hooks = {
+          starter.gen_hook.adding_bullet("  "),
+          starter.gen_hook.aligning("center", "center"),
+        },
+        footer = "",
+      })
+
+      vim.api.nvim_create_autocmd("User", {
+        pattern = "MiniStarterOpened",
+        callback = function(args)
+          local buf = args.buf
+          local opts = { buffer = buf, remap = true, silent = true }
+          vim.keymap.set("n", "j", "<Down>", opts)
+          vim.keymap.set("n", "k", "<Up>", opts)
+          vim.keymap.set("n", "l", "<CR>", opts)
+          vim.keymap.set("n", "h", "<BS>", opts)
+        end,
+      })
     end,
   },
 
@@ -172,6 +198,12 @@ require("lazy").setup({
     dependencies = {
       { "williamboman/mason.nvim", opts = {} },
       "williamboman/mason-lspconfig.nvim",
+      {
+        "WhoIsSethDaniel/mason-tool-installer.nvim",
+        opts = {
+          ensure_installed = { "ruff", "eslint_d", "shellcheck", "debugpy", "delve" },
+        },
+      },
       "saghen/blink.cmp",
     },
     config = function()
@@ -230,6 +262,62 @@ require("lazy").setup({
       sources = { default = { "lsp", "path", "snippets", "buffer" } },
       signature = { enabled = true },
     },
+  },
+
+  {
+    "mfussenegger/nvim-lint",
+    event = { "BufReadPre", "BufNewFile" },
+    config = function()
+      local lint = require("lint")
+      lint.linters_by_ft = {
+        python = { "ruff" },
+        javascript = { "eslint_d" },
+        typescript = { "eslint_d" },
+        sh = { "shellcheck" },
+      }
+
+      vim.api.nvim_create_autocmd({ "BufWritePost", "BufReadPost", "InsertLeave" }, {
+        group = vim.api.nvim_create_augroup("nvim-lint", { clear = true }),
+        callback = function()
+          lint.try_lint()
+        end,
+      })
+    end,
+  },
+
+  {
+    "mfussenegger/nvim-dap",
+    dependencies = {
+      "rcarriga/nvim-dap-ui",
+      "nvim-neotest/nvim-nio",
+      "mfussenegger/nvim-dap-python",
+      "leoluz/nvim-dap-go",
+    },
+    keys = {
+      { "<leader>db", function() require("dap").toggle_breakpoint() end, desc = "Toggle breakpoint" },
+      { "<leader>dc", function() require("dap").continue() end, desc = "Continue / start debug" },
+      { "<leader>di", function() require("dap").step_into() end, desc = "Step into" },
+      { "<leader>do", function() require("dap").step_over() end, desc = "Step over" },
+      { "<leader>dO", function() require("dap").step_out() end, desc = "Step out" },
+      { "<leader>dt", function() require("dap").terminate() end, desc = "Terminate debug session" },
+      { "<leader>du", function() require("dapui").toggle() end, desc = "Toggle debug UI" },
+    },
+    config = function()
+      local dap, dapui = require("dap"), require("dapui")
+      dapui.setup()
+      require("dap-python").setup()
+      require("dap-go").setup()
+
+      dap.listeners.after.event_initialized["dapui_config"] = function()
+        dapui.open()
+      end
+      dap.listeners.before.event_terminated["dapui_config"] = function()
+        dapui.close()
+      end
+      dap.listeners.before.event_exited["dapui_config"] = function()
+        dapui.close()
+      end
+    end,
   },
 
 }, {
