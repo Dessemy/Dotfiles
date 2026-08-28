@@ -742,8 +742,8 @@ arrangelayers(Monitor *m)
 		return;
 
 	if (m->scene_buffer->node.enabled) {
-		usable_area.height -= m->b.real_height + 2 * gappx * m->gaps;
-		usable_area.y += topbar ? m->b.real_height + 2 * gappx * m->gaps : 0;
+		usable_area.height -= m->b.real_height + 1 * gappx * m->gaps;
+		usable_area.y += topbar ? m->b.real_height + 1 * gappx * m->gaps : 0;
 	}
 
 	/* Arrange exclusive surfaces from top->bottom */
@@ -1719,13 +1719,26 @@ drawbar(Monitor *m)
         const int selected = (m->tagset[m->seltags] & (1 << i)) != 0;
         const int occupied = (occ & (1 << i)) != 0;
         w = TEXTW(m, tags[i]);
-        drwl_setscheme(m->drw, (uint32_t[]){
-            occupied ? 0x7aa2f7ff : 0xa9b1d6ff,
-            selected ? 0x9333eaff : 0x1a1b26ff,
-            selected ? 0x9333eaff : 0x444b6aff
-        });
-        drwl_text(m->drw, x, 4, w, m->b.height - 8, m->lrpad / 2, tags[i], urg & (1 << i));
-		x += w;
+        if (selected) {
+            int side = (m->b.height - 8) < w ? (m->b.height - 8) : w;
+            int bx = x + (w - side) / 2;
+            int by = (m->b.height - side) / 2;
+            int t;
+            drwl_setscheme(m->drw, (uint32_t[]){0xa9b1d6ff, 0x1a1b26ff, 0x444b6aff});
+            drwl_text(m->drw, x, 1, w, m->b.height - 2, m->lrpad / 2, tags[i], urg & (1 << i));
+            drwl_setscheme(m->drw, (uint32_t[]){0x7aa2f7ff, 0x7aa2f7ff, 0x7aa2f7ff});
+            for (t = 0; t < 2; t++)
+                drwl_rect(m->drw, bx + t, by + t, side - 2 * t, side - 2 * t, 0, 0);
+            x += w;
+        } else {
+            drwl_setscheme(m->drw, (uint32_t[]){
+                occupied ? 0x7aa2f7ff : 0xa9b1d6ff,
+                0x1a1b26ff,
+                0x444b6aff
+            });
+            drwl_text(m->drw, x, 1, w, m->b.height - 2, m->lrpad / 2, tags[i], urg & (1 << i));
+            x += w;
+        }
 	}
 	w = TEXTW(m, m->ltsymbol);
 	if (!m->lt[m->sellt]->arrange)
@@ -2086,7 +2099,6 @@ mapnotify(struct wl_listener *listener, void *data)
 	Client *p = NULL;
 	Client *w, *c = wl_container_of(listener, c, map);
 	Monitor *m;
-	int i;
 
 	/* Create scene tree for this client and its border */
 	c->scene = client_surface(c)->data = wlr_scene_tree_create(layers[LyrTile]);
@@ -3231,7 +3243,7 @@ updatebar(Monitor *m)
 
 	m->b.scale = m->wlr_output->scale;
 	m->lrpad = m->drw->font->height;
-	m->b.height = m->drw->font->height + 2;
+	m->b.height = m->drw->font->height + 10;
 	m->b.real_height = (int)((float)m->b.height / m->wlr_output->scale);
 }
 
@@ -3449,7 +3461,6 @@ void
 sethints(struct wl_listener *listener, void *data)
 {
 	Client *c = wl_container_of(listener, c, set_hints);
-	struct wlr_surface *surface = client_surface(c);
 	if (c == focustop(selmon) || !c->surface.xwayland->hints)
 		return;
 
