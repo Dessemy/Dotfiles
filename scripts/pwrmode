@@ -10,18 +10,13 @@ apply_power_mode() {
     mode="$1"
 
     case "$mode" in
-        Powersave)   sudo powerctl apply powersave   || return 1 ;;
-        Balanced)    sudo powerctl apply balanced    || return 1 ;;
-        Performance) sudo powerctl apply performance || return 1 ;;
+        Powersave)   sudo -n powerctl apply powersave   || return 1 ;;
+        Balanced)    sudo -n powerctl apply balanced    || return 1 ;;
+        Performance) sudo -n powerctl apply performance || return 1 ;;
     esac
 
     notify_power "$mode applied"
 }
-
-if ! sudo -v; then
-    notify-send -u critical "Power Mode Error" "sudo authentication failed"
-    exit 1
-fi
 
 chosen=$(printf 'Performance\nBalanced\nPowersave\n' | \
     wmenu "$@" -l 3 -p "Power Mode>") || exit 0
