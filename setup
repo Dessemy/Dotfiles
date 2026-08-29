@@ -30,6 +30,10 @@ while true; do
 done
 read -rp "Timezone [UTC]: " TIMEZONE
 TIMEZONE=${TIMEZONE:-UTC}
+read -rp "Keyboard layout [us]: " KBLAYOUT
+KBLAYOUT=${KBLAYOUT:-us}
+loadkeys "$KBLAYOUT" 2>/dev/null || true
+read -rp "Mirror country code (blank = worldwide, e.g. ID/US/SG/JP/DE): " MIRROR_COUNTRY
 read -rp "EFI partition size in MiB [512]: " EFI_SIZE
 EFI_SIZE=${EFI_SIZE:-512}
 echo "Available kernels:"
@@ -137,7 +141,7 @@ else
 fi
 sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 5/' /etc/pacman.conf 2>/dev/null || true
 pacman -Syy --noconfirm || true
-BASESTRAP_PKGS="base base-devel elogind-runit dbus-runit ${KERNEL_PKG} linux-firmware ${KERNEL_PKG}-headers git wget curl rsync unzip zip tar reflector sudo bash-completion tree less pciutils usbutils pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber alsa-utils iwd iwd-runit iproute2 inetutils openssh openssh-runit openresolv grub efibootmgr ntfs-3g dosfstools e2fsprogs exfatprogs bluez bluez-utils bluez-runit"
+BASESTRAP_PKGS="base base-devel elogind-runit dbus-runit ${KERNEL_PKG} linux-firmware ${KERNEL_PKG}-headers git wget curl rsync unzip zip tar sudo bash-completion tree less pciutils usbutils pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber alsa-utils iwd iwd-runit iproute2 inetutils openssh openssh-runit openresolv grub efibootmgr ntfs-3g dosfstools e2fsprogs exfatprogs bluez bluez-utils bluez-runit"
 [ "$ROOTFS" = "btrfs" ] && BASESTRAP_PKGS="$BASESTRAP_PKGS btrfs-progs"
 BASESTRAP_OK=0
 for i in 1 2 3; do
@@ -314,6 +318,8 @@ sed -i 's/#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
 locale-gen
 echo "LANG=en_US.UTF-8" > /etc/locale.conf
 
+echo "KEYMAP=${KBLAYOUT}" > /etc/vconsole.conf
+
 echo "${HOSTNAME}" > /etc/hostname
 cat >> /etc/hosts <<HOSTS
 127.0.0.1   localhost
@@ -340,11 +346,13 @@ cat > /etc/pacman.d/mirrorlist-arch <<'MIRRORLIST'
 Server = https://geo.mirror.pkgbuild.com/\$repo/os/\$arch
 MIRRORLIST
 
-reflector --country Indonesia,Singapore,Japan --age 12 --protocol https --completion-percent 100 --sort rate \
-    >> /etc/pacman.d/mirrorlist-arch 2>/dev/null \
-    || reflector --age 24 --protocol https --completion-percent 100 --latest 20 --sort rate \
-    >> /etc/pacman.d/mirrorlist-arch 2>/dev/null \
-    || true
+MIRROR_URL="https://archlinux.org/mirrorlist/?protocol=https&use_mirror_status=on"
+[ -n "${MIRROR_COUNTRY}" ] && MIRROR_URL="\${MIRROR_URL}&country=${MIRROR_COUNTRY}"
+
+FETCHED_MIRRORS=\$(curl -fsSL "\$MIRROR_URL" 2>/dev/null | sed 's/^#Server/Server/' | grep '^Server') || true
+if [ -n "\$FETCHED_MIRRORS" ]; then
+    printf '%s\n' "\$FETCHED_MIRRORS" > /etc/pacman.d/mirrorlist-arch
+fi
 
 if ! grep -q '^\[extra\]' /etc/pacman.conf; then
 cat >> /etc/pacman.conf <<PACMANCONF
@@ -379,6 +387,7 @@ fi
 rm -rf /root/dotfiles-src
 
 cat > /home/${USERNAME}/.bash_profile <<'BASHPROFILE'
+export XKB_DEFAULT_LAYOUT="${KBLAYOUT}"
 [[ -f "\$HOME/.bashrc" ]] && source "\$HOME/.bashrc"
 BASHPROFILE
 chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.bashrc /home/${USERNAME}/.bash_profile
@@ -559,6 +568,13 @@ cat > /etc/sudoers.d/31-resolvconf <<SUDOERS
 SUDOERS
 chmod 0440 /etc/sudoers.d/31-resolvconf
 visudo -cf /etc/sudoers.d/31-resolvconf \
+    || true
+
+cat > /etc/sudoers.d/32-powerctl <<'SUDOERS'
+%wheel ALL=(root) NOPASSWD: /usr/local/bin/powerctl apply *, /usr/local/bin/powerctl reapply, /usr/local/bin/powerctl query
+SUDOERS
+chmod 0440 /etc/sudoers.d/32-powerctl
+visudo -cf /etc/sudoers.d/32-powerctl \
     || true
 
 su - "${USERNAME}" -c 'src=\$(mktemp -d) \
