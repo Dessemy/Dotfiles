@@ -14,6 +14,7 @@ set infotimefmtold '02/01/06'
 set errorfmt "\033[1;38;2;247;118;142m"
 set numberfmt "\033[38;2;86;95;137m"
 set dircounts
+set info size
 set tabstop 4
 set scrolloff 5
 set wrapscroll
@@ -327,16 +328,28 @@ cmd paste_force %{{
 		printf '%s' "$newname"
 	}
 
+	replace_all=0
 	for f in "$@"; do
 		name=$(basename -- "$f")
 		dest="./$name"
 		if [ -e "$dest" ]; then
-			clear; tput cup $(($(tput lines)/3)); tput bold
-			printf "\t%s already exists.\n" "$name"
-			printf "\tReplace? [y/N] "
-			read -r REPLY
+			if [ "$replace_all" -eq 1 ]; then
+				REPLY=y
+			else
+				clear; tput cup $(($(tput lines)/3)); tput bold
+				printf "\t%s already exists.\n" "$name"
+				printf "\treplace? [y/n/a] "
+				read -r REPLY
+			fi
 			case "$REPLY" in
-			[yY])
+			a)
+				replace_all=1
+				case "$mode" in
+				copy) cp -rf -- "$f" "$dest" ;;
+				move) mv -f -- "$f" "$dest" ;;
+				esac
+			;;
+			y)
 				case "$mode" in
 				copy) cp -rf -- "$f" "$dest" ;;
 				move) mv -f -- "$f" "$dest" ;;
@@ -427,7 +440,8 @@ map <a-d> trash
 map <a-D> shred
 map E extract
 map P paste_link
-map pf paste_force
+map p paste_force
+map C calcdirsize
 map <a-n> push :mkdir<space>
 map <a-t> push $touch<space>
 map <a-r> reload
