@@ -4,7 +4,7 @@
         "type": "file",
         "source": "~/.config/fastfetch/asci.txt",
         "color": {
-            "1": "#7aa2f7"
+            "1": "#f7768e"
         },
         "height": 12,
         "padding": {
