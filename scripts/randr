@@ -1,0 +1,53 @@
+#!/bin/sh
+set -e
+
+RANDR_OUT="$(wlr-randr)"
+
+outputs=$(printf '%s\n' "$RANDR_OUT" | awk '/^[^[:space:]]/{print $1}')
+[ -n "$outputs" ] || { notify-send -u critical "Display Error" "No outputs found"; exit 1; }
+
+output=$(printf '%s\n' "$outputs" | wmenu "$@" -l 10 -p "Display>") || exit 0
+[ -z "$output" ] && exit 0
+
+block=$(printf '%s\n' "$RANDR_OUT" | awk -v o="$output" '
+    $0 ~ "^" o "[[:space:]]" { inside=1; next }
+    inside && /^[^[:space:]]/ { exit }
+    inside { print }
+')
+
+modes=$(printf '%s\n' "$block" | awk '
+    /px,/ {
+        line=$0
+        sub(/^[[:space:]]*/, "", line)
+        res=line; sub(/ px,.*/, "", res)
+        rate=line; sub(/^.*px,[[:space:]]*/, "", rate); sub(/[[:space:]]*Hz.*/, "", rate)
+        tag=""
+        if (line ~ /current/) tag=" (current)"
+        else if (line ~ /preferred/) tag=" (preferred)"
+        printf "%s@%sHz%s\n", res, rate, tag
+    }
+')
+[ -n "$modes" ] || { notify-send -u critical "Display Error" "No modes found for $output"; exit 1; }
+
+mode_choice=$(printf '%s\n' "$modes" | wmenu "$@" -l 15 -p "Mode>") || exit 0
+[ -z "$mode_choice" ] && exit 0
+
+mode=$(printf '%s\n' "$mode_choice" | sed -E 's/ \((current|preferred)\)$//')
+
+sync_choice=$(printf 'On\nOff\n' | wmenu "$@" -l 2 -p "Adaptive Sync>") || exit 0
+[ -z "$sync_choice" ] && exit 0
+
+case "$sync_choice" in
+    On)  sync=enabled ;;
+    Off) sync=disabled ;;
+    *)   exit 0 ;;
+esac
+
+wlr-randr --output "$output" --mode "$mode" --adaptive-sync "$sync"
+
+mkdir -p "$HOME/.cache"
+printf -- "--output %s --mode %s --adaptive-sync %s\n" "$output" "$mode" "$sync" \
+    > "$HOME/.cache/wlr-randr-cmd"
+
+command -v notify-send >/dev/null 2>&1 && \
+    notify-send "Display" "$output set to $mode, adaptive sync $sync"

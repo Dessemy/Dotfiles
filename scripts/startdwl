@@ -29,9 +29,9 @@ exec dbus-run-session -- sh -c '
 
 	PORTALSTART="/usr/lib/xdg-desktop-portal-wlr & sleep 1; /usr/lib/xdg-desktop-portal &"
 
-	REFRESHSTART="{ state=\"\$HOME/.cache/refresh-rate-state\"; [ -f \"\$state\" ] && command -v wlr-randr >/dev/null 2>&1 && read -r rr_out rr_mode rr_sync < \"\$state\" && [ -n \"\$rr_out\" ] && [ -n \"\$rr_mode\" ] && sleep 1 && wlr-randr --output \"\$rr_out\" --mode \"\$rr_mode\" >/dev/null 2>&1; [ -n \"\$rr_sync\" ] && wlr-randr --output \"\$rr_out\" --adaptive-sync \"\$rr_sync\" >/dev/null 2>&1; } &"
+	RANDRSTART="{ f=\"\$HOME/.cache/wlr-randr-cmd\"; [ -s \"\$f\" ] && sleep 1 && wlr-randr \$(cat \"\$f\") >/dev/null 2>&1; } &"
 
 	trap "kill \$PW_PID \$PWPULSE_PID \$WP_PID 2>/dev/null" EXIT
 
-	slstatus -s | dwl -s "$CLIPSTART $WALLSTART $PORTALSTART $REFRESHSTART"
+	slstatus -s | dwl -s "$CLIPSTART $WALLSTART $PORTALSTART $RANDRSTART"
 '

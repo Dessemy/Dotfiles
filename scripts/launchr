@@ -41,11 +41,6 @@ calc_eval() {
 
 apps=$(list_apps)
 
-if ! command -v wmenu >/dev/null 2>&1; then
-    notify-send -u critical "Launcher Error" "wmenu is not installed"
-    exit 1
-fi
-
 chosen=$(printf '%s\n' "$apps" | cut -f1 | wmenu "$@" -l 15 -p "Launch>") || exit 0
 [ -z "$chosen" ] && exit 0
 
