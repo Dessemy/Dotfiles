@@ -28,10 +28,30 @@ while true; do
     read -rsp "Confirm password for ${USERNAME}: " USER_PASS2; echo
     [ "$USER_PASS" = "$USER_PASS2" ] && [ -n "$USER_PASS" ] && break
 done
-read -rp "Timezone [Asia/Jakarta]: " TIMEZONE
-TIMEZONE=${TIMEZONE:-Asia/Jakarta}
+read -rp "Timezone [UTC]: " TIMEZONE
+TIMEZONE=${TIMEZONE:-UTC}
 read -rp "EFI partition size in MiB [512]: " EFI_SIZE
 EFI_SIZE=${EFI_SIZE:-512}
+echo "Available kernels:"
+echo "  1) linux (stable, default)"
+echo "  2) linux-lts (long-term support)"
+echo "  3) linux-zen (performance-tuned)"
+echo "  4) linux-hardened (security-focused)"
+read -rp "Select kernel [1]: " KERNEL_CHOICE
+KERNEL_CHOICE=${KERNEL_CHOICE:-1}
+case "$KERNEL_CHOICE" in
+    1) KERNEL_PKG="linux" ;;
+    2) KERNEL_PKG="linux-lts" ;;
+    3) KERNEL_PKG="linux-zen" ;;
+    4) KERNEL_PKG="linux-hardened" ;;
+    *) error "Invalid kernel choice." ;;
+esac
+read -rp "Root filesystem [ext4/btrfs] (default: ext4): " ROOTFS
+ROOTFS=${ROOTFS:-ext4}
+case "$ROOTFS" in
+    ext4|btrfs) ;;
+    *) error "Unsupported filesystem: $ROOTFS" ;;
+esac
 read -rp "Type 'YES' to continue: " CONFIRM
 [ "$CONFIRM" = "YES" ] || error "Aborted."
 exec < /dev/null
@@ -52,13 +72,13 @@ parted -s "$DISK" mklabel gpt
 if [ "$BOOT_MODE" = "uefi" ]; then
     parted -s "$DISK" mkpart EFI fat32 1MiB "${EFI_SIZE}MiB"
     parted -s "$DISK" set 1 esp on
-    parted -s "$DISK" mkpart ROOT ext4 "${EFI_SIZE}MiB" 100%
+    parted -s "$DISK" mkpart ROOT "$ROOTFS" "${EFI_SIZE}MiB" 100%
     EFI_PART="${PART_PREFIX}1"
     ROOT_PART="${PART_PREFIX}2"
 else
     parted -s "$DISK" mkpart BIOSBOOT 1MiB 2MiB
     parted -s "$DISK" set 1 bios_grub on
-    parted -s "$DISK" mkpart ROOT ext4 2MiB 100%
+    parted -s "$DISK" mkpart ROOT "$ROOTFS" 2MiB 100%
     ROOT_PART="${PART_PREFIX}2"
 fi
 for i in 1 2 3 4 5; do
@@ -82,7 +102,11 @@ lsblk "$DISK" 2>/dev/null || true
 ls -la "${PART_PREFIX}"* 2>/dev/null || true
 wait_for_blockdev "$ROOT_PART" || error "$ROOT_PART not found."
 wipefs -af "$ROOT_PART" 2>/dev/null || true
-mkfs.ext4 -F "$ROOT_PART"
+if [ "$ROOTFS" = "btrfs" ]; then
+    mkfs.btrfs -f "$ROOT_PART"
+else
+    mkfs.ext4 -F "$ROOT_PART"
+fi
 if [ "$BOOT_MODE" = "uefi" ]; then
     wait_for_blockdev "$EFI_PART" || error "$EFI_PART not found."
     wipefs -af "$EFI_PART" 2>/dev/null || true
@@ -113,7 +137,8 @@ else
 fi
 sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 5/' /etc/pacman.conf 2>/dev/null || true
 pacman -Syy --noconfirm || true
-BASESTRAP_PKGS="base base-devel elogind-runit dbus-runit linux linux-firmware linux-headers linux-zen linux-zen-headers git wget curl rsync unzip zip tar reflector sudo bash-completion tree less pciutils usbutils pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber alsa-utils iwd iwd-runit iproute2 inetutils openssh openssh-runit openresolv grub efibootmgr ntfs-3g dosfstools e2fsprogs exfatprogs bluez bluez-utils bluez-runit"
+BASESTRAP_PKGS="base base-devel elogind-runit dbus-runit ${KERNEL_PKG} linux-firmware ${KERNEL_PKG}-headers git wget curl rsync unzip zip tar reflector sudo bash-completion tree less pciutils usbutils pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber alsa-utils iwd iwd-runit iproute2 inetutils openssh openssh-runit openresolv grub efibootmgr ntfs-3g dosfstools e2fsprogs exfatprogs bluez bluez-utils bluez-runit"
+[ "$ROOTFS" = "btrfs" ] && BASESTRAP_PKGS="$BASESTRAP_PKGS btrfs-progs"
 BASESTRAP_OK=0
 for i in 1 2 3; do
     if basestrap /mnt $BASESTRAP_PKGS; then
@@ -135,7 +160,7 @@ set -eu
 STATE_FILE="/etc/powerctl/mode"
 
 require_root() {
-    [ "$(id -u)" -eq 0 ] || { echo "powerctl: harus jalan sebagai root" >&2; exit 1; }
+    [ "$(id -u)" -eq 0 ] || { echo "powerctl: must run as root" >&2; exit 1; }
 }
 
 write_sysfs() {
@@ -225,19 +250,8 @@ apply_mode() {
             set_wifi_powersave off
             set_audio_powersave 0
             ;;
-        ultrapowersave)
-            set_cpu_governor powersave
-            set_cpu_epp power
-            set_platform_profile low-power
-            set_sata_alpm min_power
-            set_pcie_aspm powersupersave
-            set_usb_autosuspend on 0
-            set_disk_apm 1
-            set_wifi_powersave on
-            set_audio_powersave 1
-            ;;
         *)
-            echo "powerctl: mode tidak dikenal '$mode'" >&2
+            echo "powerctl: unknown mode '$mode'" >&2
             exit 1
             ;;
     esac
@@ -440,7 +454,6 @@ fi
 
 GPU_INFO=\$(lspci -nnk | grep -Ei "VGA compatible controller|3D controller|Display controller")
 
-GPU_COUNT=\$(echo "\$GPU_INFO" | grep -Eic "VGA compatible controller|3D controller")
 HAS_NVIDIA=0; HAS_INTEL=0; HAS_AMD=0
 echo "\$GPU_INFO" | grep -qi nvidia   && HAS_NVIDIA=1
 echo "\$GPU_INFO" | grep -qi intel    && HAS_INTEL=1
@@ -474,14 +487,6 @@ if [ "\$HAS_NVIDIA" -eq 1 ]; then
     echo "options nvidia NVreg_PreserveVideoMemoryAllocations=1 NVreg_EnableGpuFirmware=0 NVreg_DynamicPowerManagement=0x02" > /etc/modprobe.d/nvidia-power.conf
 
     mkinitcpio -P || true
-fi
-
-if [ "\$GPU_COUNT" -ge 2 ] && [ "\$HAS_NVIDIA" -eq 1 ]; then
-    echo "hybrid-nvidia" > /root/.gpu-mode
-elif [ "\$GPU_COUNT" -ge 2 ]; then
-    echo "hybrid-other" > /root/.gpu-mode
-else
-    echo "single" > /root/.gpu-mode
 fi
 
 if [ -d /root/dwl-src ]; then
@@ -521,37 +526,6 @@ visudo -cf /etc/sudoers.d/20-wheel-nopass || exit 1
 su - "${USERNAME}" -c "cd ~ && git clone https://aur.archlinux.org/yay-bin.git && cd yay-bin && makepkg -si --noconfirm" \
     || true
 rm -rf "/home/${USERNAME}/yay-bin"
-
-if [ -f /root/.gpu-mode ] && [ "\$(cat /root/.gpu-mode)" = "hybrid-nvidia" ]; then
-
-    cat > /usr/local/bin/systemctl <<'SYSTEMCTL_STUB'
-#!/bin/bash
-case "$1" in
-    is-active)
-        echo "inactive"
-        exit 3
-        ;;
-    is-enabled)
-        echo "disabled"
-        exit 1
-        ;;
-    status)
-        echo "○ $2 - not running (runit system, systemctl is a no-op stub)"
-        exit 3
-        ;;
-    *)
-        exit 0
-        ;;
-esac
-SYSTEMCTL_STUB
-    chmod +x /usr/local/bin/systemctl
-
-    su - "${USERNAME}" -c "yay -S --needed --noconfirm envycontrol" \
-        || true
-elif [ -f /root/.gpu-mode ] && [ "\$(cat /root/.gpu-mode)" = "hybrid-other" ]; then
-    :
-fi
-rm -f /root/.gpu-mode
 
 cat > /home/${USERNAME}/dwl-install.sh <<'DWLSCRIPT'
 #!/bin/bash
