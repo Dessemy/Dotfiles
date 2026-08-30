@@ -122,7 +122,7 @@ bind '"\e[1;5D": backward-word'
 bind -x '"\C-f": _fzf_file_no_hidden'
 
 wifi() {
-  local dev network pass
+  local dev networks network pass
 
   dev=$(iwctl device list 2>/dev/null \
     | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' \
@@ -138,9 +138,9 @@ wifi() {
   fi
 
   iwctl station "$dev" scan >/dev/null 2>&1
-  sleep 2
+  sleep 3
 
-  network=$(iwctl station "$dev" get-networks 2>/dev/null \
+  networks=$(iwctl station "$dev" get-networks 2>/dev/null \
     | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' \
     | grep -Ev '^[[:space:]]*$' \
     | grep -Ev '^-+$' \
@@ -152,9 +152,14 @@ wifi() {
         ssid = ""
         for (i = 1; i <= n - 2; i++) ssid = ssid (i > 1 ? " " : "") $i
         print ssid
-      }' \
-    | fzf --prompt=" Wi-Fi> ")
+      }')
 
+  if [ -z "$networks" ]; then
+    echo "No networks found"
+    return 0
+  fi
+
+  network=$(printf '%s\n' "$networks" | fzf --prompt=" Wi-Fi> ")
   [ -z "$network" ] && return 0
 
   read -rsp "Password for $network (blank if open): " pass
@@ -168,7 +173,21 @@ wifi() {
 }
 
 bt() {
-  local action choice mac
+  local action devices choice mac
+
+  bt_powered() {
+    bluetoothctl show 2>/dev/null | awk -F': ' '/Powered/{print $2; exit}'
+  }
+
+  scan_devices() {
+    {
+      echo "scan on"
+      sleep 8
+      echo "devices"
+      echo "scan off"
+      echo "exit"
+    } | bluetoothctl 2>/dev/null | grep '^Device ' | sed -E 's/^Device //' | sort -u
+  }
 
   bluetoothctl power on >/dev/null 2>&1
 
@@ -177,25 +196,41 @@ bt() {
 
   case "$action" in
     Connect)
-      echo "Scanning for 5 seconds..."
-      timeout 6 bluetoothctl scan on
-      choice=$(bluetoothctl devices 2>/dev/null \
-        | sed -E 's/^Device //' \
-        | fzf --prompt="Connect> ")
+      echo "Scanning for 8 seconds..."
+      devices=$(scan_devices)
+      if [ -z "$devices" ]; then
+        echo "No devices found"
+        return 0
+      fi
+
+      choice=$(printf '%s\n' "$devices" | fzf --prompt="Connect> ")
       [ -z "$choice" ] && return 0
       mac=$(awk '{print $1}' <<< "$choice")
+
+      if ! bluetoothctl info "$mac" 2>/dev/null | grep -q "Paired: yes"; then
+        echo "Pairing with $mac..."
+        bluetoothctl pair "$mac"
+        sleep 1
+      fi
+
+      bluetoothctl trust "$mac" >/dev/null 2>&1
+      sleep 1
       bluetoothctl connect "$mac"
       ;;
     Disconnect)
       choice=$(bluetoothctl devices Connected 2>/dev/null | sed -E 's/^Device //')
       [ -z "$choice" ] && choice=$(bluetoothctl devices 2>/dev/null | sed -E 's/^Device //')
+      if [ -z "$choice" ]; then
+        echo "No devices to disconnect"
+        return 0
+      fi
       choice=$(printf '%s\n' "$choice" | fzf --prompt="Disconnect> ")
       [ -z "$choice" ] && return 0
       mac=$(awk '{print $1}' <<< "$choice")
       bluetoothctl disconnect "$mac"
       ;;
     "Toggle Power")
-      if [ "$(bluetoothctl show 2>/dev/null | awk -F': ' '/Powered/{print $2; exit}')" = "yes" ]; then
+      if [ "$(bt_powered)" = "yes" ]; then
         bluetoothctl power off
       else
         bluetoothctl power on
@@ -204,8 +239,8 @@ bt() {
   esac
 }
 
-bind -x '"\C-xw": wifi'
-bind -x '"\C-xb": bt'
+bind -x '"\C-w": wifi'
+bind -x '"\C-b": bt'
 
 bind '"\e[A": history-search-backward'
 bind '"\e[B": history-search-forward'
