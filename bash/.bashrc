@@ -125,6 +125,7 @@ wifi() {
   local dev network pass
 
   dev=$(iwctl device list 2>/dev/null \
+    | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' \
     | grep -Ev '^[[:space:]]*$' \
     | grep -Ev '^-+$' \
     | grep -Ev '^[[:space:]]*Devices[[:space:]]*$' \
@@ -171,14 +172,13 @@ bt() {
 
   bluetoothctl power on >/dev/null 2>&1
 
-  action=$(printf 'Scan\nConnect\nDisconnect\n' | fzf --prompt=" Bluetooth> ")
+  action=$(printf 'Connect\nDisconnect\nToggle Power\n' | fzf --prompt=" Bluetooth> ")
   [ -z "$action" ] && return 0
 
   case "$action" in
-    Scan)
-      bluetoothctl --timeout 5 scan on
-      ;;
     Connect)
+      echo "Scanning for 5 seconds..."
+      timeout 6 bluetoothctl scan on
       choice=$(bluetoothctl devices 2>/dev/null \
         | sed -E 's/^Device //' \
         | fzf --prompt="Connect> ")
@@ -193,6 +193,13 @@ bt() {
       [ -z "$choice" ] && return 0
       mac=$(awk '{print $1}' <<< "$choice")
       bluetoothctl disconnect "$mac"
+      ;;
+    "Toggle Power")
+      if [ "$(bluetoothctl show 2>/dev/null | awk -F': ' '/Powered/{print $2; exit}')" = "yes" ]; then
+        bluetoothctl power off
+      else
+        bluetoothctl power on
+      fi
       ;;
   esac
 }
