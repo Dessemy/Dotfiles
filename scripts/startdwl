@@ -27,7 +27,7 @@ exec dbus-run-session -- sh -c '
 		WALLSTART=""
 	fi
 
-	PORTALSTART="/usr/lib/xdg-desktop-portal-wlr & sleep 1; /usr/lib/xdg-desktop-portal &"
+	PORTALSTART="/usr/lib/xdg-desktop-portal-wlr & sleep 1; /usr/lib/xdg-desktop-portal 2>/dev/null &"
 
 	RANDRSTART="{ f=\"\$HOME/.cache/wlr-randr-cmd\"; [ -s \"\$f\" ] && sleep 1 && wlr-randr \$(cat \"\$f\") >/dev/null 2>&1; } &"
 
