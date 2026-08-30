@@ -121,6 +121,85 @@ bind '"\e[1;5D": backward-word'
 
 bind -x '"\C-f": _fzf_file_no_hidden'
 
+wifi() {
+  local dev network pass
+
+  dev=$(iwctl device list 2>/dev/null \
+    | grep -Ev '^[[:space:]]*$' \
+    | grep -Ev '^-+$' \
+    | grep -Ev '^[[:space:]]*Devices[[:space:]]*$' \
+    | grep -Ev '^[[:space:]]*Name[[:space:]]+Address' \
+    | awk '{print $1; exit}')
+
+  if [ -z "$dev" ]; then
+    echo "No wireless device found" >&2
+    return 1
+  fi
+
+  iwctl station "$dev" scan >/dev/null 2>&1
+  sleep 2
+
+  network=$(iwctl station "$dev" get-networks 2>/dev/null \
+    | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' \
+    | grep -Ev '^[[:space:]]*$' \
+    | grep -Ev '^-+$' \
+    | grep -Ev '^[[:space:]]*Available networks[[:space:]]*$' \
+    | grep -Ev '^[[:space:]]*Network name[[:space:]]+Security' \
+    | awk '{
+        n = NF
+        if (n < 3) next
+        ssid = ""
+        for (i = 1; i <= n - 2; i++) ssid = ssid (i > 1 ? " " : "") $i
+        print ssid
+      }' \
+    | fzf --prompt=" Wi-Fi> ")
+
+  [ -z "$network" ] && return 0
+
+  read -rsp "Password for $network (blank if open): " pass
+  echo
+
+  if [ -n "$pass" ]; then
+    iwctl --passphrase "$pass" station "$dev" connect "$network"
+  else
+    iwctl station "$dev" connect "$network"
+  fi
+}
+
+bt() {
+  local action choice mac
+
+  bluetoothctl power on >/dev/null 2>&1
+
+  action=$(printf 'Scan\nConnect\nDisconnect\n' | fzf --prompt=" Bluetooth> ")
+  [ -z "$action" ] && return 0
+
+  case "$action" in
+    Scan)
+      bluetoothctl --timeout 5 scan on
+      ;;
+    Connect)
+      choice=$(bluetoothctl devices 2>/dev/null \
+        | sed -E 's/^Device //' \
+        | fzf --prompt="Connect> ")
+      [ -z "$choice" ] && return 0
+      mac=$(awk '{print $1}' <<< "$choice")
+      bluetoothctl connect "$mac"
+      ;;
+    Disconnect)
+      choice=$(bluetoothctl devices Connected 2>/dev/null | sed -E 's/^Device //')
+      [ -z "$choice" ] && choice=$(bluetoothctl devices 2>/dev/null | sed -E 's/^Device //')
+      choice=$(printf '%s\n' "$choice" | fzf --prompt="Disconnect> ")
+      [ -z "$choice" ] && return 0
+      mac=$(awk '{print $1}' <<< "$choice")
+      bluetoothctl disconnect "$mac"
+      ;;
+  esac
+}
+
+bind -x '"\C-xw": wifi'
+bind -x '"\C-xb": bt'
+
 bind '"\e[A": history-search-backward'
 bind '"\e[B": history-search-forward'
 
