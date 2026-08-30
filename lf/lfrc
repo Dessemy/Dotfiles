@@ -242,18 +242,51 @@ cmd shred ${{
 	esac
 }}
 
+cmd rename_nvim ${{
+	old="$f"
+	dir=$(dirname -- "$old")
+	base=$(basename -- "$old")
+	tmpfile=$(mktemp)
+	printf '%s\n' "$base" > "$tmpfile"
+	"${EDITOR:-nvim}" "$tmpfile"
+	newname=$(head -n1 "$tmpfile")
+	rm -f "$tmpfile"
+	if [ -z "$newname" ] || [ "$newname" = "$base" ]; then
+		exit 0
+	fi
+	if [ -e "$dir/$newname" ]; then
+		lf -remote "send $id echo target already exists"
+		exit 1
+	fi
+	mv -- "$old" "$dir/$newname"
+	lf -remote "send $id reload"
+	lf -remote "send $id select \"$dir/$newname\""
+}}
+
 cmd compress ${{
-	clear
-	format=$(printf '%s\n' zip tar.gz 7z | fzf --prompt="Archive format: ")
-	[ -z "$format" ] && exit 0
-	printf "Archive name (without extension): "
+	clear; tput cup $(($(tput lines)/3)); tput bold
+	printf "\tArchive format:\n"
+	printf "\t1) zip\n"
+	printf "\t2) tar\n"
+	printf "\t3) tar.gz\n"
+	printf "\t4) tar.bz2\n"
+	printf "\t5) tar.xz\n"
+	printf "\t6) 7z\n"
+	printf "\tChoice: "
+	read -r choice
+	case "$choice" in
+		1) ext=zip ;;
+		2) ext=tar ;;
+		3) ext=tar.gz ;;
+		4) ext=tar.bz2 ;;
+		5) ext=tar.xz ;;
+		6) ext=7z ;;
+		(*) exit 0 ;;
+	esac
+	printf "\tArchive name (without extension): "
 	read -r name
 	[ -z "$name" ] && name="archive"
-	case "$format" in
-		(zip) apack "${name}.zip" $fx ;;
-		(tar.gz) apack "${name}.tar.gz" $fx ;;
-		(7z) apack "${name}.7z" $fx ;;
-	esac
+	apack "${name}.${ext}" $fx
 	lf -remote "send $id reload"
 }}
 
@@ -479,7 +512,7 @@ cmap <a-A> cmd-end
 cmap <a-,> cmd-delete
 
 map c
-map r
+map r rename_nvim
 map i rename
 map A push i<a-A>
 map cc push i<a-A><c-u>
@@ -496,3 +529,5 @@ map <c-z> stop
 map W &{ nohup "${TERMINAL:-foot}" >/dev/null 2>&1& }
 
 map Y $printf "%s" "$fx" | wl-copy
+
+
