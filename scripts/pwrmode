@@ -18,8 +18,16 @@ apply_power_mode() {
     notify_power "$mode applied"
 }
 
+raw_current=$(powerctl query 2>/dev/null) || raw_current="unknown"
+case "$raw_current" in
+    powersave)   current="Powersave" ;;
+    balanced)    current="Balanced" ;;
+    performance) current="Performance" ;;
+    *)           current="Unknown" ;;
+esac
+
 chosen=$(printf 'Performance\nBalanced\nPowersave\n' | \
-    wmenu "$@" -l 3 -p "Power Mode>") || exit 0
+    wmenu "$@" -l 3 -p "Power Mode (current: ${current})>") || exit 0
 
 [ -z "$chosen" ] && exit 0
 

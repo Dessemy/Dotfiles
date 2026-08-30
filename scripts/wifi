@@ -1,0 +1,105 @@
+#!/bin/sh
+set -e
+
+notify_wifi() {
+    command -v notify-send >/dev/null 2>&1 && \
+        notify-send -t 2000 "Wi-Fi" "$1"
+}
+
+get_device() {
+    iwctl device list 2>/dev/null \
+        | grep -Ev '^[[:space:]]*$' \
+        | grep -Ev '^-+$' \
+        | grep -Ev '^[[:space:]]*Devices[[:space:]]*$' \
+        | grep -Ev '^[[:space:]]*Name[[:space:]]+Address' \
+        | awk '{print $1; exit}'
+}
+
+wifi_show() {
+    iwctl station "$DEVICE" show 2>/dev/null
+}
+
+current_ssid() {
+    wifi_show | awk -F'  +' '/Connected network/{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$2); print $2}'
+}
+
+if ! command -v iwctl >/dev/null 2>&1; then
+    notify-send -u critical "Wi-Fi Error" "iwctl is not installed"
+    exit 1
+fi
+
+DEVICE=$(get_device)
+if [ -z "$DEVICE" ]; then
+    notify-send -u critical "Wi-Fi Error" "No wireless device found"
+    exit 1
+fi
+
+ssid=$(current_ssid)
+[ -n "$ssid" ] && label="$ssid" || label="disconnected"
+
+action=$(printf 'Connect\nDisconnect\nStatus\n' | \
+    wmenu "$@" -l 3 -p "Wi-Fi (${label})>") || exit 0
+[ -z "$action" ] && exit 0
+
+case "$action" in
+    Status)
+        info=$(wifi_show)
+        if [ -n "$info" ]; then
+            summary=$(printf '%s' "$info" | tr -s '[:space:]' ' ')
+            notify_wifi "$summary"
+        else
+            notify_wifi "No status available"
+        fi
+        ;;
+
+    Disconnect)
+        if iwctl station "$DEVICE" disconnect >/dev/null 2>&1; then
+            notify_wifi "Disconnected"
+        else
+            notify_wifi "Failed to disconnect, or already disconnected"
+        fi
+        ;;
+
+    Connect)
+        iwctl station "$DEVICE" scan >/dev/null 2>&1 || true
+        sleep 2
+
+        networks=$(iwctl station "$DEVICE" get-networks 2>/dev/null \
+            | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' \
+            | grep -Ev '^[[:space:]]*$' \
+            | grep -Ev '^-+$' \
+            | grep -Ev '^[[:space:]]*Available networks[[:space:]]*$' \
+            | grep -Ev '^[[:space:]]*Network name[[:space:]]+Security' \
+            | awk '{
+                n = NF
+                if (n < 3) next
+                ssid = ""
+                for (i = 1; i <= n - 2; i++) ssid = ssid (i > 1 ? " " : "") $i
+                print ssid
+            }')
+
+        if [ -z "$networks" ]; then
+            notify_wifi "No networks found"
+            exit 0
+        fi
+
+        chosen=$(printf '%s\n' "$networks" | wmenu "$@" -l 15 -p "Connect>") || exit 0
+        [ -z "$chosen" ] && exit 0
+
+        pass=$(printf '' | wmenu "$@" -P -p "Password for ${chosen} (blank if open)>") || pass=""
+
+        if [ -n "$pass" ]; then
+            if iwctl --passphrase "$pass" station "$DEVICE" connect "$chosen" >/dev/null 2>&1; then
+                notify_wifi "Connected to ${chosen}"
+            else
+                notify_wifi "Failed to connect to ${chosen}"
+            fi
+        else
+            if iwctl station "$DEVICE" connect "$chosen" >/dev/null 2>&1; then
+                notify_wifi "Connected to ${chosen}"
+            else
+                notify_wifi "Failed to connect to ${chosen}"
+            fi
+        fi
+        ;;
+esac
