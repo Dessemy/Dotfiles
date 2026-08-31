@@ -30,24 +30,7 @@ while true; do
 done
 read -rp "Timezone [UTC]: " TIMEZONE
 TIMEZONE=${TIMEZONE:-UTC}
-echo "Available languages:"
-echo "  1) English (en_US.UTF-8) [default]"
-echo "  2) Indonesian (id_ID.UTF-8)"
-echo "  3) Spanish (es_ES.UTF-8)"
-echo "  4) French (fr_FR.UTF-8)"
-echo "  5) German (de_DE.UTF-8)"
-echo "  6) Japanese (ja_JP.UTF-8)"
-read -rp "Select language [1]: " LANG_CHOICE
-LANG_CHOICE=${LANG_CHOICE:-1}
-case "$LANG_CHOICE" in
-    1) LOCALE="en_US.UTF-8" ;;
-    2) LOCALE="id_ID.UTF-8" ;;
-    3) LOCALE="es_ES.UTF-8" ;;
-    4) LOCALE="fr_FR.UTF-8" ;;
-    5) LOCALE="de_DE.UTF-8" ;;
-    6) LOCALE="ja_JP.UTF-8" ;;
-    *) error "Invalid language choice." ;;
-esac
+LOCALE="en_US.UTF-8"
 read -rp "Keyboard layout [us]: " KBLAYOUT
 KBLAYOUT=${KBLAYOUT:-us}
 loadkeys "$KBLAYOUT" 2>/dev/null || true
@@ -236,8 +219,40 @@ set_wifi_powersave() {
     done
 }
 
+first_cpu_file() {
+    # Return the first existing cpuX sysfs path for the given leaf.
+    for f in /sys/devices/system/cpu/cpu[0-9]*/"$1"; do
+        [ -e "$f" ] && echo "$f" && return 0
+    done
+    return 1
+}
+
+gov_available() {
+    # $1 = governor name; true if listed in scaling_available_governors.
+    avail=$(first_cpu_file cpufreq/scaling_available_governors 2>/dev/null || true)
+    [ -n "$avail" ] || return 1
+    grep -q "$1" "$avail" 2>/dev/null
+}
+
+read_current() {
+    # $1 = leaf name under cpufreq; print its value, else empty.
+    f=$(first_cpu_file cpufreq/"$1" 2>/dev/null || true)
+    [ -n "$f" ] && cat "$f" 2>/dev/null
+}
+
+balanced_governor() {
+    # Intel intel-pstate/sched: schedutil exists. AMD pstate-epp: only
+    # powersave+performance, so use powersave (EPP carries the balance).
+    if gov_available schedutil; then
+        echo schedutil
+    else
+        echo powersave
+    fi
+}
+
 apply_mode() {
     mode="$1"
+
     case "$mode" in
         powersave)
             set_cpu_governor powersave
@@ -251,7 +266,7 @@ apply_mode() {
             set_audio_powersave 1
             ;;
         balanced)
-            set_cpu_governor schedutil
+            set_cpu_governor "$(balanced_governor)"
             set_cpu_epp balance_power
             set_platform_profile balanced
             set_sata_alpm med_power_with_dipm
@@ -288,23 +303,46 @@ case "${1:-}" in
         apply_mode "$2"
         ;;
     reapply)
+        # Re-apply the persisted mode on AC/battery transitions. Be tolerant
+        # of a stale/malformed state file so the udev power_supply rule
+        # doesn't spam the kernel log on every battery event.
         require_root
-        [ -f "$STATE_FILE" ] || exit 0
-        apply_mode "$(cat "$STATE_FILE")"
+        set +eu
+        mode=""
+        [ -f "$STATE_FILE" ] && mode=$(cat "$STATE_FILE" 2>/dev/null || true)
+        case "$mode" in
+            powersave|balanced|performance) ;;
+            *)
+                mode=""
+                ;;
+        esac
+        if [ -n "$mode" ]; then
+            apply_mode "$mode"
+        else
+            [ -f "$STATE_FILE" ] && printf 'balanced\n' > "$STATE_FILE"
+            apply_mode balanced
+        fi
         ;;
     query)
-        gov=""
-        for f in /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_governor; do
-            [ -e "$f" ] || continue
-            gov=$(cat "$f" 2>/dev/null) || gov=""
-            [ -n "$gov" ] && break
-        done
+        gov=$(read_current scaling_governor || true)
         case "$gov" in
-            powersave)   echo powersave ;;
-            schedutil)   echo balanced ;;
-            performance) echo performance ;;
-            *)           echo unknown ;;
+            schedutil)              echo balanced; exit 0 ;;
+            powersave|performance)  ;;
+            *)                      gov="" ;;
         esac
+        epp=$(read_current energy_performance_preference || true)
+        if [ "$gov" = "powersave" ]; then
+            case "$epp" in
+                power)                            echo powersave; exit 0 ;;
+                balance_power|balance_performance) echo balanced;  exit 0 ;;
+            esac
+            echo powersave; exit 0
+        fi
+        case "$gov" in
+            performance) echo performance; exit 0 ;;
+            *)           echo unknown;    exit 0 ;;
+        esac
+        echo unknown
         ;;
     *)
         echo "usage: powerctl {apply <mode>|reapply|query}" >&2
@@ -518,6 +556,230 @@ if [ "\$HAS_NVIDIA" -eq 1 ]; then
     mkinitcpio -P || true
 fi
 
+GPU_COUNT=0
+[ "\$HAS_INTEL" -eq 1 ] && GPU_COUNT=\$((GPU_COUNT + 1))
+[ "\$HAS_NVIDIA" -eq 1 ] && GPU_COUNT=\$((GPU_COUNT + 1))
+[ "\$HAS_AMD" -eq 1 ]    && GPU_COUNT=\$((GPU_COUNT + 1))
+
+if [ "\$GPU_COUNT" -ge 2 ]; then
+    if [ -f /root/dotfiles-src/scripts/gpu-switch ]; then
+        cp /root/dotfiles-src/scripts/gpu-switch /usr/local/bin/gpu-switch
+        chmod +x /usr/local/bin/gpu-switch
+    else
+cat > /usr/local/bin/gpu-switch <<'GPUSWITCH_EOF'
+#!/bin/bash
+set -euo pipefail
+
+STATE_FILE="/etc/gpu-switch-state"
+
+require_root() {
+    [ "$(id -u)" -eq 0 ] || { echo "gpu-switch: must run as root" >&2; exit 1; }
+}
+
+get_intel_pci() {
+    lspci -nn | awk '/VGA compatible controller.*Intel/ || /Display controller.*Intel/ {
+        match($0, /([0-9a-f]{4}:)?[0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f]/)
+        if (RSTART > 0) print substr($0, RSTART, RLENGTH)
+    }' | head -1
+}
+
+get_nvidia_pci() {
+    lspci -nn | awk '/VGA compatible controller.*NVIDIA/ || /3D controller.*NVIDIA/ {
+        match($0, /([0-9a-f]{4}:)?[0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f]/)
+        if (RSTART > 0) print substr($0, RSTART, RLENGTH)
+    }' | head -1
+}
+
+get_amd_pci() {
+    lspci -nn | awk '/VGA compatible controller.*AMD/ || /VGA compatible controller.*ATI/ {
+        match($0, /([0-9a-f]{4}:)?[0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f]/)
+        if (RSTART > 0) print substr($0, RSTART, RLENGTH)
+    }' | head -1
+}
+
+sysfs_pci() {
+    case "$1" in
+        ????:*) echo "$1" ;;
+        *)      echo "0000:${1}" ;;
+    esac
+}
+
+unbind_driver() {
+    local pci
+    pci=$(sysfs_pci "$1")
+    local driver_path="/sys/bus/pci/devices/${pci}/driver"
+    if [ -L "$driver_path" ]; then
+        local driver
+        driver=$(basename "$(readlink "$driver_path")")
+        echo "${pci}" > "/sys/bus/pci/drivers/${driver}/unbind" 2>/dev/null || true
+    fi
+}
+
+remove_nvidia_modules() {
+    rmmod nvidia_drm 2>/dev/null || true
+    rmmod nvidia_modeset 2>/dev/null || true
+    rmmod nvidia_uvm 2>/dev/null || true
+    rmmod nvidia 2>/dev/null || true
+}
+
+remove_amd_modules() {
+    rmmod amdgpu 2>/dev/null || true
+    rmmod radeon 2>/dev/null || true
+}
+
+power_off_gpu() {
+    local raw_pci="$1"
+    local gpu_name="$2"
+    local pci
+    pci=$(sysfs_pci "$raw_pci")
+
+    echo "Powering off ${gpu_name} (${pci})..."
+
+    if echo "$gpu_name" | grep -qi nvidia; then
+        remove_nvidia_modules
+    elif echo "$gpu_name" | grep -qi amd; then
+        remove_amd_modules
+    fi
+
+    unbind_driver "$raw_pci"
+
+    local remove_path="/sys/bus/pci/devices/${pci}/remove"
+    if [ -w "$remove_path" ]; then
+        echo 1 > "$remove_path"
+        echo "GPU ${gpu_name} fully removed from PCI bus."
+    else
+        local power_path="/sys/bus/pci/devices/${pci}/power/control"
+        if [ -w "$power_path" ]; then
+            echo auto > "$power_path"
+            echo "GPU ${gpu_name} set to auto power management."
+        fi
+    fi
+}
+
+power_on_gpu() {
+    local raw_pci="$1"
+    local gpu_name="$2"
+    local pci
+    pci=$(sysfs_pci "$raw_pci")
+
+    echo "Powering on ${gpu_name} (${pci})..."
+
+    local remove_path="/sys/bus/pci/devices/${pci}/remove"
+    if [ -f "$remove_path" ] || ! lspci -s "${pci}" >/dev/null 2>&1; then
+        echo 1 > /sys/bus/pci/rescan 2>/dev/null || true
+        sleep 1
+    fi
+
+    local power_path="/sys/bus/pci/devices/${pci}/power/control"
+    if [ -w "$power_path" ]; then
+        echo on > "$power_path" 2>/dev/null || true
+    fi
+
+    if echo "$gpu_name" | grep -qi nvidia; then
+        modprobe nvidia 2>/dev/null || true
+        modprobe nvidia_uvm 2>/dev/null || true
+        modprobe nvidia_modeset 2>/dev/null || true
+        modprobe nvidia_drm 2>/dev/null || true
+    elif echo "$gpu_name" | grep -qi amd; then
+        modprobe amdgpu 2>/dev/null || true
+    fi
+}
+
+detect_active_gpu() {
+    local nvidia_pci
+    nvidia_pci=$(get_nvidia_pci)
+    if [ -n "$nvidia_pci" ]; then
+        local driver_path="/sys/bus/pci/devices/$(sysfs_pci "$nvidia_pci")/driver"
+        if [ -L "$driver_path" ]; then
+            echo "nvidia"
+            return
+        fi
+    fi
+    echo "integrated"
+}
+
+do_switch() {
+    local target="${1:-}"
+    local intel nvidia amd
+    intel=$(get_intel_pci)
+    nvidia=$(get_nvidia_pci)
+    amd=$(get_amd_pci)
+
+    local discrete_type discrete_pci
+    if [ -n "$nvidia" ]; then
+        discrete_type="nvidia"
+        discrete_pci="$nvidia"
+    elif [ -n "$amd" ]; then
+        discrete_type="amd"
+        discrete_pci="$amd"
+    else
+        echo "No discrete GPU found." >&2
+        exit 1
+    fi
+
+    case "$target" in
+        integrated|int)
+            power_off_gpu "$discrete_pci" "$discrete_type"
+            echo "integrated" > "$STATE_FILE"
+            echo "Switched to integrated GPU. Discrete GPU fully powered off."
+            ;;
+        discrete|gpu)
+            power_on_gpu "$discrete_pci" "$discrete_type"
+            echo "discrete" > "$STATE_FILE"
+            echo "Switched to discrete GPU (${discrete_type})."
+            ;;
+        *)
+            echo "Usage: gpu-switch {integrated|discrete}" >&2
+            echo "  integrated/int  - Power off discrete GPU completely" >&2
+            echo "  discrete/gpu    - Enable discrete GPU" >&2
+            exit 1
+            ;;
+    esac
+}
+
+do_status() {
+    local current
+    current=$(detect_active_gpu)
+    echo "Active GPU: ${current}"
+    [ -f "$STATE_FILE" ] && echo "Last switch: $(cat "$STATE_FILE")"
+}
+
+do_toggle() {
+    local current
+    current=$(detect_active_gpu)
+    if [ "$current" = "nvidia" ]; then
+        do_switch integrated
+    else
+        do_switch discrete
+    fi
+}
+
+case "${1:-}" in
+    switch)
+        require_root
+        do_switch "${2:-}"
+        ;;
+    toggle)
+        require_root
+        do_toggle
+        ;;
+    status)
+        do_status
+        ;;
+    *)
+        echo "Usage: gpu-switch {switch <integrated|discrete>|toggle|status}" >&2
+        echo "  switch integrated - Power off discrete GPU completely" >&2
+        echo "  switch discrete   - Enable discrete GPU" >&2
+        echo "  toggle            - Toggle between integrated and discrete" >&2
+        echo "  status            - Show current GPU status" >&2
+        exit 1
+        ;;
+esac
+GPUSWITCH_EOF
+        chmod +x /usr/local/bin/gpu-switch
+    fi
+fi
+
 if [ -d /root/dwl-src ]; then
     pacman -S --needed --noconfirm wayland wayland-protocols pkgconf libxkbcommon libinput pixman fcft tllist wlroots0.19 wlr-randr libxcb xcb-util-wm \
         || true
@@ -601,6 +863,15 @@ SUDOERS
 chmod 0440 /etc/sudoers.d/32-powerctl
 visudo -cf /etc/sudoers.d/32-powerctl \
     || true
+
+if [ -f /usr/local/bin/gpu-switch ]; then
+cat > /etc/sudoers.d/33-gpu-switch <<'SUDOERS'
+%wheel ALL=(root) NOPASSWD: /usr/local/bin/gpu-switch switch *, /usr/local/bin/gpu-switch toggle, /usr/local/bin/gpu-switch status
+SUDOERS
+chmod 0440 /etc/sudoers.d/33-gpu-switch
+visudo -cf /etc/sudoers.d/33-gpu-switch \
+    || true
+fi
 
 su - "${USERNAME}" -c 'src=\$(mktemp -d) \
     && git clone --recursive --depth 1 https://github.com/akinomyoga/ble.sh.git "\$src" \
