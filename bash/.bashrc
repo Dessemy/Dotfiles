@@ -70,9 +70,15 @@ export FZF_DEFAULT_OPTS='
   --height=60%
   --layout=reverse
   --border=none
+  --no-separator
+  --no-scrollbar
   --prompt="  "
   --pointer="  "
+  --marker="  "
   --preview-window=right,65%,wrap,border-none
+  --color=bg+:#24283b,bg:#1a1b26,spinner:#7aa2f7,hl:#7dcfff
+  --color=fg:#c0caf5,header:#7aa2f7,info:#9ece6a,pointer:#bb9af7
+  --color=marker:#bb9af7,fg+:#c0caf5,prompt:#7aa2f7,hl+:#7dcfff
 '
 export _FZF_PREVIEW_CMD='bat --color=always --style=plain,numbers --line-range=:500 {}'
 export FZF_CTRL_T_OPTS="--preview '$_FZF_PREVIEW_CMD'"
@@ -119,15 +125,6 @@ set -o vi
 bind '"\e[1;5C": forward-word'
 bind '"\e[1;5D": backward-word'
 
-_read_secret() {
-  local var=$1 prompt=$2
-  if [[ ${BLE_VERSION-} ]]; then
-    ble/util/read "$var" -rsp "$prompt"
-  else
-    read -rsp "$prompt" "$var"
-  fi
-}
-
 wifi() {
   local dev networks network pass
 
@@ -147,19 +144,46 @@ wifi() {
   iwctl station "$dev" scan >/dev/null 2>&1
   sleep 3
 
-  networks=$(iwctl station "$dev" get-networks 2>/dev/null \
+  local cur_ssid known raw networks network security
+  cur_ssid=$(iwctl station "$dev" show 2>/dev/null \
+    | awk '/Connected network/{for(i=3;i<=NF;i++) printf "%s ",$i; print ""}' | xargs 2>/dev/null)
+
+  known=$(iwctl known-networks list 2>/dev/null \
     | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' \
-    | grep -Ev '^[[:space:]]*$' \
-    | grep -Ev '^-+$' \
-    | grep -Ev '^[[:space:]]*Available networks[[:space:]]*$' \
-    | grep -Ev '^[[:space:]]*Network name[[:space:]]+Security' \
-    | awk '{
-        n = NF
-        if (n < 3) next
-        ssid = ""
-        for (i = 1; i <= n - 2; i++) ssid = ssid (i > 1 ? " " : "") $i
-        print ssid
-      }')
+    | awk '
+        /^[[:space:]]*$/ { next }
+        /^[[:space:]]*-+[[:space:]]*$/ { next }
+        /^[[:space:]]*Known Networks[[:space:]]*$/ { next }
+        /^[[:space:]]*Name[[:space:]]+Security/ { next }
+        {
+          name = ""
+          for (i = 1; i <= NF; i++) {
+            if ($i == "psk" || $i == "open") break
+            name = (name != "" ? name " " : "") $i
+          }
+          if (name != "")
+            print name
+        }')
+
+  raw=$(iwctl station "$dev" get-networks 2>/dev/null \
+    | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' \
+    | awk -v cur="$cur_ssid" '
+        /^[[:space:]]*$/ { next }
+        /^[[:space:]]*-+[[:space:]]*$/ { next }
+        /^[[:space:]]*Available networks[[:space:]]*$/ { next }
+        /^[[:space:]]*Network name[[:space:]]+Security[[:space:]]+Signal[[:space:]]*$/ { next }
+        {
+          sub(/^[[:space:]]*>?[[:space:]]*/, "", $0)
+          n = split($0, parts, /[[:space:]][[:space:]]+/)
+          if (n >= 1 && parts[1] != "") {
+            security = ""
+            for (i = 2; i <= n; i++)
+              if (parts[i] == "psk" || parts[i] == "open") { security = parts[i]; break }
+            printf "%s\t%s\t%s\n", parts[1], security, (parts[1] == cur ? "*" : "")
+          }
+        }')
+
+  networks=$(printf '%b\n' "$raw" | awk -F'\t' '{printf "%s%s\n", $1, ($3=="*" ? " *" : "")}')
 
   if [ -z "$networks" ]; then
     echo "No networks found"
@@ -169,14 +193,26 @@ wifi() {
   network=$(printf '%s\n' "$networks" | fzf --prompt=" Wi-Fi> ")
   [ -z "$network" ] && return 0
 
-  _read_secret pass "Password for $network (blank if open): "
-  echo
-
-  if [ -n "$pass" ]; then
-    iwctl --passphrase "$pass" station "$dev" connect "$network"
-  else
-    iwctl station "$dev" connect "$network"
+  network="${network% \*}"
+  if [ -n "$cur_ssid" ] && [ "$network" = "$cur_ssid" ]; then
+    iwctl station "$dev" disconnect >/dev/null 2>&1
+    echo "Disconnected"
+    return 0
   fi
+
+  if printf '%s\n' "$known" | grep -qxF "$network"; then
+    iwctl station "$dev" connect "$network"
+    return 0
+  fi
+
+  security=$(printf '%b\n' "$raw" | awk -F'\t' -v n="$network" '$1 == n {print $2; exit}')
+
+  if [ "$security" = "open" ]; then
+    iwctl station "$dev" connect "$network"
+    return 0
+  fi
+
+  iwctl station "$dev" connect "$network"
 }
 
 bt() {
@@ -195,7 +231,7 @@ bt() {
     [[ ${seen[$mac]+x} ]] && return
     seen[$mac]=1
     if _bt_is_connected "$mac"; then
-      buf+="* $mac $name"$'\n'
+      buf+="$mac $name *"$'\n'
     else
       buf+="$mac $name"$'\n'
     fi
@@ -346,11 +382,7 @@ bt() {
   choice=$(printf '%s' "$devices" | fzf --prompt=" Bluetooth> ")
   [ -z "$choice" ] && return 0
 
-  if [ "${choice:0:2}" = '* ' ]; then
-    mac=$(awk '{print $2}' <<< "$choice")
-  else
-    mac=$(awk '{print $1}' <<< "$choice")
-  fi
+  mac=$(awk '{print $1}' <<< "$choice")
 
   if _bt_is_connected "$mac"; then
     bluetoothctl disconnect "$mac" >/dev/null 2>&1
