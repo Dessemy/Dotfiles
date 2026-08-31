@@ -461,6 +461,20 @@ if [ -d /root/dotfiles-src ]; then
     fi
 fi
 
+# Make configs available under root too, so tools launched via `sudo`
+# (e.g. `sudo lf`, `sudo nvim`) keep their config instead of falling back
+# to a plain/default one (root's HOME has no .config by default).
+mkdir -p /root/.config
+for d in lf nvim foot mako fastfetch; do
+    if [ -d "/home/${USERNAME}/.config/\$d" ]; then
+        rm -rf "/root/.config/\$d"
+        ln -sf "/home/${USERNAME}/.config/\$d" "/root/.config/\$d"
+    else
+        :
+    fi
+done
+chown -R root:root /root/.config
+
 if [ -f /root/dotfiles-src/dot-bashrc ]; then
     cp /root/dotfiles-src/dot-bashrc "/home/${USERNAME}/.bashrc"
 fi
