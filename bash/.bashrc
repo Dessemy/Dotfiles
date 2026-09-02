@@ -30,7 +30,7 @@ if [ -z "$WAYLAND_DISPLAY" ] && [ -z "$DISPLAY" ] && [ "$(tty)" = "/dev/tty1" ];
     mkdir -p "$(dirname "$FIRST_BOOT_MARKER")"
     touch "$FIRST_BOOT_MARKER"
   fi
-  exec dbus-run-session ~/.config/scripts/startdwl
+  exec ~/.config/scripts/startdwl
 fi
 
 export HISTFILE="$XDG_STATE_HOME/bash/history"
@@ -91,7 +91,7 @@ _fzf_file_no_hidden() {
   READLINE_POINT=$((READLINE_POINT + ${#result}))
 }
 
-alias sdwl='dbus-run-session ~/.config/scripts/startdwl'
+alias sdwl='~/.config/scripts/startdwl'
 
 alias cat='bat'
 
