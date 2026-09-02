@@ -130,18 +130,6 @@ for dir in "${CONFIG_DIRS[@]}"; do
         :
     fi
 done
-rm -f /mnt/root/dotfiles-src/scripts/gpu-switch
-
-HOST_GPU_INFO=$(lspci -nnk 2>/dev/null | grep -Ei "VGA compatible controller|3D controller|Display controller")
-HOST_GPU_BRANDS=0
-echo "$HOST_GPU_INFO" | grep -qi nvidia && HOST_GPU_BRANDS=$((HOST_GPU_BRANDS + 1))
-echo "$HOST_GPU_INFO" | grep -qi intel && HOST_GPU_BRANDS=$((HOST_GPU_BRANDS + 1))
-echo "$HOST_GPU_INFO" | grep -Eqi "amd|ati|radeon" && HOST_GPU_BRANDS=$((HOST_GPU_BRANDS + 1))
-if [ "$HOST_GPU_BRANDS" -ge 2 ]; then
-    if [ -f "$SCRIPT_DIR/scripts/gpu-switch" ]; then
-        cp "$SCRIPT_DIR/scripts/gpu-switch" /mnt/root/dotfiles-src/scripts/gpu-switch
-    fi
-fi
 if [ -f "$SCRIPT_DIR/bash/.bashrc" ]; then
     cp "$SCRIPT_DIR/bash/.bashrc" /mnt/root/dotfiles-src/dot-bashrc
 else
@@ -154,7 +142,7 @@ else
 fi
 sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 5/' /etc/pacman.conf 2>/dev/null || true
 pacman -Syy --noconfirm || true
-BASESTRAP_PKGS="base base-devel elogind-runit dbus-runit ${KERNEL_PKG} linux-firmware ${KERNEL_PKG}-headers git wget curl rsync unzip zip tar sudo bash-completion tree less pciutils usbutils pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber alsa-utils iwd iwd-runit iproute2 inetutils openssh openssh-runit openresolv grub efibootmgr ntfs-3g dosfstools e2fsprogs exfatprogs bluez bluez-utils bluez-runit"
+BASESTRAP_PKGS="base base-devel elogind-runit dbus-runit ${KERNEL_PKG} linux-firmware ${KERNEL_PKG}-headers git wget curl sudo tar bash-completion tree less pciutils usbutils pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber alsa-utils iwd iwd-runit iproute2 inetutils openresolv grub efibootmgr bluez bluez-utils bluez-runit ntfs-3g dosfstools e2fsprogs exfatprogs"
 [ "$ROOTFS" = "btrfs" ] && BASESTRAP_PKGS="$BASESTRAP_PKGS btrfs-progs"
 BASESTRAP_OK=0
 for i in 1 2 3; do
@@ -166,7 +154,7 @@ for i in 1 2 3; do
     sleep 3
 done
 [ "$BASESTRAP_OK" -eq 1 ] || error "basestrap failed."
-fstabgen -U /mnt >> /mnt/etc/fstab
+fstabgen -U /mnt > /mnt/etc/fstab
 
 mkdir -p /mnt/usr/local/bin
 cat > /mnt/usr/local/bin/powerctl <<'POWERCTL_EOF'
@@ -363,6 +351,97 @@ case "${1:-}" in
 esac
 POWERCTL_EOF
 chmod +x /mnt/usr/local/bin/powerctl
+
+HAS_NVIDIA_DUAL=0
+_HOST_GPU_INFO=$(lspci -nn 2>/dev/null || true)
+echo "$_HOST_GPU_INFO" | grep -qi nvidia   && HAS_NVIDIA_DUAL=1
+_HOST_HAS_IGPU=0
+echo "$_HOST_GPU_INFO" | grep -qiE 'VGA.*Intel|Display.*Intel|VGA.*AMD|VGA.*ATI' && _HOST_HAS_IGPU=1
+[ "$HAS_NVIDIA_DUAL" -eq 1 ] && [ "$_HOST_HAS_IGPU" -eq 1 ] && HAS_NVIDIA_DUAL=2
+
+if [ "$HAS_NVIDIA_DUAL" -ge 2 ]; then
+cat > /mnt/usr/local/bin/dgpu <<'DGPU_EOF'
+#!/bin/bash
+set -euo pipefail
+
+TIMEOUT=10
+
+get_nvidia_pci() {
+    lspci -nn | awk '/VGA compatible controller.*NVIDIA/ || /3D controller.*NVIDIA/ {
+        match($0, /([0-9a-f]{4}:)?[0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f]/)
+        if (RSTART > 0) print substr($0, RSTART, RLENGTH)
+    }' | head -1
+}
+
+sysfs_pci() {
+    case "$1" in
+        ????:*) echo "$1" ;;
+        *)      echo "0000:${1}" ;;
+    esac
+}
+
+gpu_power_control() {
+    local pci
+    pci=$(sysfs_pci "$(get_nvidia_pci)")
+    cat "/sys/bus/pci/devices/${pci}/power/control" 2>/dev/null || echo "on"
+}
+
+[ "$(id -u)" -eq 0 ] || { echo "dgpu: must run as root" >&2; exit 1; }
+
+nvidia_pci=$(get_nvidia_pci)
+[ -n "$nvidia_pci" ] || { echo "dgpu: no NVIDIA GPU found." >&2; exit 1; }
+pci=$(sysfs_pci "$nvidia_pci")
+power_path="/sys/bus/pci/devices/${pci}/power/control"
+autosuspend_path="/sys/bus/pci/devices/${pci}/power/autosuspend_delay_ms"
+
+case "${1:-}" in
+    on)
+        if [ "$(gpu_power_control)" = "on" ]; then
+            echo "dgpu: already on."
+            exit 0
+        fi
+        if [ -w "$power_path" ]; then
+            echo on > "$power_path" 2>/dev/null || true
+        fi
+        systemctl start nvidia-persistenced 2>/dev/null || true
+        for mod in nvidia nvidia_uvm nvidia_modeset nvidia_drm; do
+            if ! lsmod | grep -q "^${mod} "; then
+                timeout --signal=KILL 30 modprobe "$mod" 2>/dev/null || {
+                    echo "  Warning: failed to load ${mod}" >&2
+                }
+            fi
+        done
+        echo "dgpu: on."
+        ;;
+    off)
+        if [ "$(gpu_power_control)" = "auto" ]; then
+            echo "dgpu: already off."
+            exit 0
+        fi
+        systemctl stop nvidia-persistenced 2>/dev/null || true
+        if [ -w "$autosuspend_path" ]; then
+            echo 0 > "$autosuspend_path" 2>/dev/null || true
+        fi
+        if [ -w "$power_path" ]; then
+            echo auto > "$power_path" 2>/dev/null
+            echo "dgpu: off (runtime PM, enters D3 when idle)."
+        else
+            echo "dgpu: cannot set runtime PM for ${pci}" >&2
+            exit 1
+        fi
+        ;;
+    s|status)
+        ctl=$(gpu_power_control)
+        echo "dgpu: ${ctl}"
+        ;;
+    *)
+        echo "Usage: dgpu {on|off|status}" >&2
+        exit 1
+        ;;
+esac
+DGPU_EOF
+chmod +x /mnt/usr/local/bin/dgpu
+fi
 
 mkdir -p /mnt/etc/udev/rules.d
 cat > /mnt/etc/udev/rules.d/90-powerctl.rules <<'POWERCTL_RULES_EOF'
@@ -562,7 +641,7 @@ echo "\$GPU_INFO" | grep -Eqi "amd|ati|radeon" && HAS_AMD=1
 GPU_PKGS="mesa vulkan-icd-loader lib32-mesa lib32-vulkan-icd-loader"
 [ "\$HAS_NVIDIA" -eq 1 ] && GPU_PKGS="\$GPU_PKGS nvidia-dkms nvidia-utils nvidia-settings opencl-nvidia lib32-nvidia-utils lib32-opencl-nvidia"
 [ "\$HAS_INTEL" -eq 1 ]  && GPU_PKGS="\$GPU_PKGS vulkan-intel intel-media-driver libva-intel-driver lib32-vulkan-intel"
-[ "\$HAS_AMD" -eq 1 ]    && GPU_PKGS="\$GPU_PKGS xf86-video-amdgpu vulkan-radeon libva-mesa-driver lib32-vulkan-radeon lib32-mesa"
+[ "\$HAS_AMD" -eq 1 ]    && GPU_PKGS="\$GPU_PKGS xf86-video-amdgpu vulkan-radeon libva-mesa-driver lib32-vulkan-radeon"
 
 for pkg in \$GPU_PKGS; do
     pacman -S --needed --noconfirm "\$pkg" || true
@@ -589,17 +668,7 @@ if [ "\$HAS_NVIDIA" -eq 1 ]; then
     mkinitcpio -P || true
 fi
 
-GPU_COUNT=0
-[ "\$HAS_INTEL" -eq 1 ] && GPU_COUNT=\$((GPU_COUNT + 1))
-[ "\$HAS_NVIDIA" -eq 1 ] && GPU_COUNT=\$((GPU_COUNT + 1))
-[ "\$HAS_AMD" -eq 1 ]    && GPU_COUNT=\$((GPU_COUNT + 1))
 
-if [ "\$GPU_COUNT" -ge 2 ]; then
-    if [ -f /root/dotfiles-src/scripts/gpu-switch ]; then
-        cp /root/dotfiles-src/scripts/gpu-switch /usr/local/bin/gpu-switch
-        chmod +x /usr/local/bin/gpu-switch
-    fi
-fi
 
 if [ -d /root/dwl-src ]; then
     pacman -S --needed --noconfirm wayland wayland-protocols pkgconf libxkbcommon libinput pixman fcft tllist wlroots0.19 wlr-randr libxcb xcb-util-wm \
@@ -685,12 +754,12 @@ chmod 0440 /etc/sudoers.d/32-powerctl
 visudo -cf /etc/sudoers.d/32-powerctl \
     || true
 
-if [ -f /usr/local/bin/gpu-switch ]; then
-cat > /etc/sudoers.d/33-gpu-switch <<'SUDOERS'
-%wheel ALL=(root) NOPASSWD: /usr/local/bin/gpu-switch switch *, /usr/local/bin/gpu-switch toggle, /usr/local/bin/gpu-switch status
+if [ -f /usr/local/bin/dgpu ]; then
+cat > /etc/sudoers.d/33-dgpu <<'SUDOERS'
+%wheel ALL=(root) NOPASSWD: /usr/local/bin/dgpu on, /usr/local/bin/dgpu off, /usr/local/bin/dgpu s, /usr/local/bin/dgpu status
 SUDOERS
-chmod 0440 /etc/sudoers.d/33-gpu-switch
-visudo -cf /etc/sudoers.d/33-gpu-switch \
+chmod 0440 /etc/sudoers.d/33-dgpu
+visudo -cf /etc/sudoers.d/33-dgpu \
     || true
 fi
 
@@ -705,7 +774,7 @@ rm -f /etc/sudoers.d/20-wheel-nopass
 enable_svc seatd
 usermod -aG seat "${USERNAME}"
 
-cat > /usr/local/bin/usb-automount <<'AUTOMOUNT'
+cat > /usr/local/bin/usb-automount <<AUTOMOUNT
 #!/bin/bash
 ACTION="\$1"
 DEV="\$2"
@@ -803,10 +872,6 @@ su - "${USERNAME}" -c "yay -Sc --noconfirm" 2>/dev/null || true
 rm -rf "/home/${USERNAME}/.cache/yay"
 find "/home/${USERNAME}" -maxdepth 1 \( -name "*.pkg.tar.*" -o -name "yay-bin" -o -name "ble.sh*" \) -exec rm -rf {} + 2>/dev/null || true
 pacman -Scc --noconfirm 2>/dev/null || true
-rm -f /etc/runit/runsvdir/default/NetworkManager 2>/dev/null || true
-pkill NetworkManager 2>/dev/null || true
-pacman -Qi networkmanager >/dev/null 2>&1 && { pacman -Rns --noconfirm networkmanager || true; }
-rm -f /etc/resolv.conf 2>/dev/null || true
 EOF
 chmod +x /mnt/root/chroot-setup.sh
 mkdir -p /mnt/etc
@@ -839,8 +904,6 @@ IWDPROFILE
             chmod 600 "/mnt/var/lib/iwd/${ssid}.open"
         fi
     done
-else
-    :
 fi
 
 artix-chroot /mnt /root/chroot-setup.sh
