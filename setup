@@ -647,12 +647,11 @@ GPU_PKGS="mesa vulkan-icd-loader lib32-mesa lib32-vulkan-icd-loader"
 
 ALL_PKGS="\$GPU_PKGS wayland wayland-protocols pkgconf libxkbcommon libinput pixman fcft tllist wlroots0.19 wlr-randr libxcb xcb-util-wm foot mako wmenu cliphist swaybg xorg-xwayland ttf-firacode-nerd noto-fonts noto-fonts-cjk noto-fonts-emoji bc neovim htop zoxide fastfetch ffmpeg 7zip mpv qutebrowser wireguard-tools grim slurp nodejs npm waylock brightnessctl libnotify xdg-desktop-portal-wlr qt5-wayland qt6-wayland lf bat chafa jq perl-image-exiftool fzf ripgrep fd wl-clipboard lsd lynx poppler imagemagick atool gnupg man-db trash-cli librsvg odt2txt catdoc moreutils ffmpegthumbnailer imv xdg-utils dragon-drag-and-drop unrar perl-file-mimeinfo xdg-desktop-portal-no-systemd-rtkit"
 
-if pacman -Q xdg-desktop-portal >/dev/null 2>&1; then
-    sudo pacman -Rdd --noconfirm xdg-desktop-portal || true
-fi
-
 for pkg in \$ALL_PKGS; do
-    yay -S --needed --noconfirm --mflags --skippgpcheck "\$pkg" \
+    if [ "\$pkg" = "xdg-desktop-portal-no-systemd-rtkit" ] && pacman -Q xdg-desktop-portal >/dev/null 2>&1; then
+        sudo pacman -Rdd --noconfirm xdg-desktop-portal || true
+    fi
+    yes | yay -S --needed --noconfirm --mflags --skippgpcheck "\$pkg" \
         || true
 done
 DWLSCRIPT
@@ -681,7 +680,7 @@ if [ "\$HAS_NVIDIA" -eq 1 ]; then
     echo "options nvidia NVreg_PreserveVideoMemoryAllocations=1 NVreg_EnableGpuFirmware=0 NVreg_DynamicPowerManagement=0x02" > /etc/modprobe.d/nvidia-power.conf
 
     mkinitcpio -P || true
-th
+fi
 
 if [ -d /root/dwl-src ]; then
     cd /root/dwl-src
