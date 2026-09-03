@@ -142,7 +142,7 @@ else
 fi
 sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 5/' /etc/pacman.conf 2>/dev/null || true
 pacman -Syy --noconfirm || true
-BASESTRAP_PKGS="base-devel dbus-runit ${KERNEL_PKG} linux-firmware ${KERNEL_PKG}-headers git wget curl bash-completion tree less usbutils pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber alsa-utils iwd iwd-runit inetutils openresolv grub efibootmgr bluez bluez-utils bluez-runit ntfs-3g dosfstools exfatprogs"
+BASESTRAP_PKGS="base-devel dbus-runit ${KERNEL_PKG} linux-firmware ${KERNEL_PKG}-headers git wget curl bash-completion tree less usbutils seatd-runit pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber alsa-utils iwd-runit inetutils openresolv grub efibootmgr bluez bluez-runit ntfs-3g dosfstools exfatprogs"
 if [ "$ROOTFS" = "btrfs" ]; then
     BASESTRAP_PKGS="$BASESTRAP_PKGS btrfs-progs"
 else
@@ -645,7 +645,7 @@ GPU_PKGS="mesa vulkan-icd-loader lib32-mesa lib32-vulkan-icd-loader"
 [ "\$HAS_INTEL" -eq 1 ]  && GPU_PKGS="\$GPU_PKGS vulkan-intel intel-media-driver libva-intel-driver lib32-vulkan-intel"
 [ "\$HAS_AMD" -eq 1 ]    && GPU_PKGS="\$GPU_PKGS xf86-video-amdgpu vulkan-radeon libva-mesa-driver lib32-vulkan-radeon"
 
-ALL_PKGS="\$GPU_PKGS wayland wayland-protocols pkgconf libxkbcommon libinput pixman fcft tllist wlroots0.19 wlr-randr libxcb xcb-util-wm foot mako wmenu cliphist swaybg seatd seatd-runit xorg-xwayland ttf-firacode-nerd noto-fonts noto-fonts-cjk noto-fonts-emoji bc neovim htop zoxide fastfetch ffmpeg 7zip mpv qutebrowser wireguard-tools grim slurp nodejs npm waylock brightnessctl libnotify xdg-desktop-portal-wlr qt5-wayland qt6-wayland lf bat chafa jq perl-image-exiftool fzf ripgrep fd wl-clipboard lsd lynx poppler imagemagick atool gnupg man-db trash-cli librsvg odt2txt catdoc moreutils ffmpegthumbnailer imv xdg-utils dragon-drag-and-drop unrar perl-file-mimeinfo xdg-desktop-portal-no-systemd-rtkit"
+ALL_PKGS="\$GPU_PKGS wayland wayland-protocols pkgconf libxkbcommon libinput pixman fcft tllist wlroots0.19 wlr-randr libxcb xcb-util-wm foot mako wmenu cliphist swaybg xorg-xwayland ttf-firacode-nerd noto-fonts noto-fonts-cjk noto-fonts-emoji bc neovim htop zoxide fastfetch ffmpeg 7zip mpv qutebrowser wireguard-tools grim slurp nodejs npm waylock brightnessctl libnotify xdg-desktop-portal-wlr qt5-wayland qt6-wayland lf bat chafa jq perl-image-exiftool fzf ripgrep fd wl-clipboard lsd lynx poppler imagemagick atool gnupg man-db trash-cli librsvg odt2txt catdoc moreutils ffmpegthumbnailer imv xdg-utils dragon-drag-and-drop unrar perl-file-mimeinfo xdg-desktop-portal-no-systemd-rtkit"
 
 if pacman -Q xdg-desktop-portal >/dev/null 2>&1; then
     sudo pacman -Rdd --noconfirm xdg-desktop-portal || true
