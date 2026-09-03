@@ -142,8 +142,12 @@ else
 fi
 sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 5/' /etc/pacman.conf 2>/dev/null || true
 pacman -Syy --noconfirm || true
-BASESTRAP_PKGS="base base-devel elogind-runit dbus-runit ${KERNEL_PKG} linux-firmware ${KERNEL_PKG}-headers git wget curl sudo tar bash-completion tree less pciutils usbutils pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber alsa-utils iwd iwd-runit iproute2 inetutils openresolv grub efibootmgr bluez bluez-utils bluez-runit ntfs-3g dosfstools e2fsprogs exfatprogs"
-[ "$ROOTFS" = "btrfs" ] && BASESTRAP_PKGS="$BASESTRAP_PKGS btrfs-progs"
+BASESTRAP_PKGS="base-devel dbus-runit ${KERNEL_PKG} linux-firmware ${KERNEL_PKG}-headers git wget curl bash-completion tree less usbutils pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber alsa-utils iwd iwd-runit inetutils openresolv grub efibootmgr bluez bluez-utils bluez-runit ntfs-3g dosfstools exfatprogs"
+if [ "$ROOTFS" = "btrfs" ]; then
+    BASESTRAP_PKGS="$BASESTRAP_PKGS btrfs-progs"
+else
+    BASESTRAP_PKGS="$BASESTRAP_PKGS e2fsprogs"
+fi
 BASESTRAP_OK=0
 for i in 1 2 3; do
     if basestrap /mnt $BASESTRAP_PKGS; then
@@ -220,7 +224,6 @@ set_wifi_powersave() {
 }
 
 first_cpu_file() {
-    # Return the first existing cpuX sysfs path for the given leaf.
     for f in /sys/devices/system/cpu/cpu[0-9]*/"$1"; do
         [ -e "$f" ] && echo "$f" && return 0
     done
@@ -228,21 +231,17 @@ first_cpu_file() {
 }
 
 gov_available() {
-    # $1 = governor name; true if listed in scaling_available_governors.
     avail=$(first_cpu_file cpufreq/scaling_available_governors 2>/dev/null || true)
     [ -n "$avail" ] || return 1
     grep -q "$1" "$avail" 2>/dev/null
 }
 
 read_current() {
-    # $1 = leaf name under cpufreq; print its value, else empty.
     f=$(first_cpu_file cpufreq/"$1" 2>/dev/null || true)
     [ -n "$f" ] && cat "$f" 2>/dev/null
 }
 
 balanced_governor() {
-    # Intel intel-pstate/sched: schedutil exists. AMD pstate-epp: only
-    # powersave+performance, so use powersave (EPP carries the balance).
     if gov_available schedutil; then
         echo schedutil
     else
@@ -303,9 +302,6 @@ case "${1:-}" in
         apply_mode "$2"
         ;;
     reapply)
-        # Re-apply the persisted mode on AC/battery transitions. Be tolerant
-        # of a stale/malformed state file so the udev power_supply rule
-        # doesn't spam the kernel log on every battery event.
         require_root
         set +eu
         mode=""
@@ -540,11 +536,6 @@ if [ -d /root/dotfiles-src ]; then
     fi
 fi
 
-# Make configs available under root too, so tools launched via `sudo`
-# (e.g. `sudo lf`, `sudo nvim`) keep their config instead of falling back
-# to a plain/default one (root's HOME has no .config by default).
-# Dynamic: symlink every config dir EXCEPT those needing a real user HOME
-# (e.g. scripts that expand $HOME / absolute user paths) and state dirs.
 mkdir -p /root/.config
 for d in /home/${USERNAME}/.config/*/; do
     [ -d "\$d" ] || continue
@@ -623,7 +614,6 @@ mkdir -p \
     "/home/${USERNAME}/Pictures/Wallpapers" \
     "/home/${USERNAME}/.cache"
 
-
 if ! grep -q '.local/bin' "/home/${USERNAME}/.bashrc" 2>/dev/null; then
     cat >> "/home/${USERNAME}/.bashrc" <<'LOCALBINPATH'
 
@@ -638,14 +628,39 @@ echo "\$GPU_INFO" | grep -qi nvidia   && HAS_NVIDIA=1
 echo "\$GPU_INFO" | grep -qi intel    && HAS_INTEL=1
 echo "\$GPU_INFO" | grep -Eqi "amd|ati|radeon" && HAS_AMD=1
 
+cat > /etc/sudoers.d/20-wheel-nopass <<'SUDOERS'
+%wheel ALL=(ALL:ALL) NOPASSWD: ALL
+SUDOERS
+chmod 0440 /etc/sudoers.d/20-wheel-nopass
+visudo -cf /etc/sudoers.d/20-wheel-nopass || exit 1
+
+su - "${USERNAME}" -c "cd ~ && git clone https://aur.archlinux.org/yay-bin.git && cd yay-bin && makepkg -si --noconfirm" \
+    || true
+rm -rf "/home/${USERNAME}/yay-bin"
+
+cat > /home/${USERNAME}/dwl-install.sh <<'DWLSCRIPT'
+#!/bin/bash
 GPU_PKGS="mesa vulkan-icd-loader lib32-mesa lib32-vulkan-icd-loader"
 [ "\$HAS_NVIDIA" -eq 1 ] && GPU_PKGS="\$GPU_PKGS nvidia-dkms nvidia-utils nvidia-settings opencl-nvidia lib32-nvidia-utils lib32-opencl-nvidia"
 [ "\$HAS_INTEL" -eq 1 ]  && GPU_PKGS="\$GPU_PKGS vulkan-intel intel-media-driver libva-intel-driver lib32-vulkan-intel"
 [ "\$HAS_AMD" -eq 1 ]    && GPU_PKGS="\$GPU_PKGS xf86-video-amdgpu vulkan-radeon libva-mesa-driver lib32-vulkan-radeon"
 
-for pkg in \$GPU_PKGS; do
-    pacman -S --needed --noconfirm "\$pkg" || true
+ALL_PKGS="\$GPU_PKGS wayland wayland-protocols pkgconf libxkbcommon libinput pixman fcft tllist wlroots0.19 wlr-randr libxcb xcb-util-wm foot mako wmenu cliphist swaybg seatd seatd-runit xorg-xwayland ttf-firacode-nerd noto-fonts noto-fonts-cjk noto-fonts-emoji bc neovim htop zoxide fastfetch ffmpeg 7zip mpv qutebrowser wireguard-tools grim slurp nodejs npm waylock brightnessctl libnotify xdg-desktop-portal-wlr qt5-wayland qt6-wayland lf bat chafa jq perl-image-exiftool fzf ripgrep fd wl-clipboard lsd lynx poppler imagemagick atool gnupg man-db trash-cli librsvg odt2txt catdoc moreutils ffmpegthumbnailer imv xdg-utils dragon-drag-and-drop unrar perl-file-mimeinfo xdg-desktop-portal-no-systemd-rtkit"
+
+if pacman -Q xdg-desktop-portal >/dev/null 2>&1; then
+    sudo pacman -Rdd --noconfirm xdg-desktop-portal || true
+fi
+
+for pkg in \$ALL_PKGS; do
+    yay -S --needed --noconfirm --mflags --skippgpcheck "\$pkg" \
+        || true
 done
+DWLSCRIPT
+chown ${USERNAME}:${USERNAME} /home/${USERNAME}/dwl-install.sh
+chmod +x /home/${USERNAME}/dwl-install.sh
+
+su - "${USERNAME}" -c "HAS_NVIDIA=\$HAS_NVIDIA HAS_INTEL=\$HAS_INTEL HAS_AMD=\$HAS_AMD /home/${USERNAME}/dwl-install.sh"
+rm -f /home/${USERNAME}/dwl-install.sh
 
 if [ "\$HAS_NVIDIA" -eq 1 ]; then
 
@@ -666,14 +681,9 @@ if [ "\$HAS_NVIDIA" -eq 1 ]; then
     echo "options nvidia NVreg_PreserveVideoMemoryAllocations=1 NVreg_EnableGpuFirmware=0 NVreg_DynamicPowerManagement=0x02" > /etc/modprobe.d/nvidia-power.conf
 
     mkinitcpio -P || true
-fi
-
-
+th
 
 if [ -d /root/dwl-src ]; then
-    pacman -S --needed --noconfirm wayland wayland-protocols pkgconf libxkbcommon libinput pixman fcft tllist wlroots0.19 wlr-randr libxcb xcb-util-wm \
-        || true
-
     cd /root/dwl-src
     WPROTO_DIR="\$(pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null)"
     if [ -n "\$WPROTO_DIR" ] && grep -q 'staging/cursor-shape' Makefile 2>/dev/null \
@@ -697,36 +707,6 @@ if [ -d /root/dwl-src ]; then
 else
     exit 1
 fi
-
-cat > /etc/sudoers.d/20-wheel-nopass <<'SUDOERS'
-%wheel ALL=(ALL:ALL) NOPASSWD: ALL
-SUDOERS
-chmod 0440 /etc/sudoers.d/20-wheel-nopass
-visudo -cf /etc/sudoers.d/20-wheel-nopass || exit 1
-
-su - "${USERNAME}" -c "cd ~ && git clone https://aur.archlinux.org/yay-bin.git && cd yay-bin && makepkg -si --noconfirm" \
-    || true
-rm -rf "/home/${USERNAME}/yay-bin"
-
-cat > /home/${USERNAME}/dwl-install.sh <<'DWLSCRIPT'
-#!/bin/bash
-DWL_PKGS="foot mako wmenu cliphist swaybg seatd seatd-runit xorg-xwayland ttf-firacode-nerd noto-fonts noto-fonts-cjk noto-fonts-emoji bc neovim htop zoxide fastfetch ffmpeg 7zip wiremix mpv qutebrowser wireguard-tools grim slurp nodejs npm waylock brightnessctl libnotify xdg-desktop-portal-wlr qt5-wayland qt6-wayland lf bat chafa jq perl-image-exiftool fzf ripgrep fd wl-clipboard lsd lynx poppler imagemagick atool gnupg man-db trash-cli librsvg odt2txt catdoc moreutils ffmpegthumbnailer imv xdg-utils dragon-drag-and-drop unrar perl-file-mimeinfo archivemount"
-
-if pacman -Q xdg-desktop-portal >/dev/null 2>&1; then
-    sudo pacman -Rdd --noconfirm xdg-desktop-portal || true
-fi
-yay -S --needed --noconfirm --mflags --skippgpcheck xdg-desktop-portal-no-systemd-rtkit || true
-
-for pkg in \$DWL_PKGS; do
-    yay -S --needed --noconfirm "\$pkg" \
-        || true
-done
-DWLSCRIPT
-chown ${USERNAME}:${USERNAME} /home/${USERNAME}/dwl-install.sh
-chmod +x /home/${USERNAME}/dwl-install.sh
-
-su - "${USERNAME}" -c /home/${USERNAME}/dwl-install.sh
-rm -f /home/${USERNAME}/dwl-install.sh
 
 mkdir -p /etc/wireguard
 chmod 700 /etc/wireguard
