@@ -142,7 +142,7 @@ else
 fi
 sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 5/' /etc/pacman.conf 2>/dev/null || true
 pacman -Syy --noconfirm || true
-BASESTRAP_PKGS="base-devel dbus-runit ${KERNEL_PKG} linux-firmware ${KERNEL_PKG}-headers git wget curl bash-completion tree less usbutils seatd-runit pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber alsa-utils iwd-runit inetutils openresolv grub efibootmgr bluez bluez-runit ntfs-3g dosfstools exfatprogs"
+BASESTRAP_PKGS="base base-devel dbus-runit ${KERNEL_PKG} linux-firmware ${KERNEL_PKG}-headers git wget curl bash-completion tree less usbutils seatd-runit pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber alsa-utils iwd-runit inetutils openresolv grub efibootmgr bluez bluez-runit ntfs-3g dosfstools exfatprogs"
 if [ "$ROOTFS" = "btrfs" ]; then
     BASESTRAP_PKGS="$BASESTRAP_PKGS btrfs-progs"
 else
