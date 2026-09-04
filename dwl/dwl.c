@@ -1,3 +1,4 @@
+#include <fcntl.h>
 #include <getopt.h>
 #include <libinput.h>
 #include <linux/input-event-codes.h>
@@ -2532,7 +2533,14 @@ run(char *startup_cmd)
 		if ((child_pid = fork()) < 0)
 			die("startup: fork:");
 		if (child_pid == 0) {
-			close(STDIN_FILENO);
+			int nullfd = open("/dev/null", O_RDONLY);
+			if (nullfd >= 0) {
+				dup2(nullfd, STDIN_FILENO);
+				if (nullfd != STDIN_FILENO)
+					close(nullfd);
+			} else {
+				close(STDIN_FILENO);
+			}
 			setsid();
 			execl("/bin/sh", "/bin/sh", "-c", startup_cmd, NULL);
 			die("startup: execl:");
