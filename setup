@@ -766,42 +766,42 @@ RUNTIMEDIRSV
 mkdir -p /media
 cat > /usr/local/bin/block-automount <<'AUTOMOUNT'
 #!/bin/bash
-ACTION="$1"
-DEV="$2"
-DEVNODE="/dev/$DEV"
-MOUNT_POINT="/media/$DEV"
+ACTION="\$1"
+DEV="\$2"
+DEVNODE="/dev/\$DEV"
+MOUNT_POINT="/media/\$DEV"
 TARGET_USER="__USERNAME__"
-TARGET_UID="$(id -u "$TARGET_USER" 2>/dev/null || echo 1000)"
-TARGET_GID="$(id -g "$TARGET_USER" 2>/dev/null || echo 1000)"
+TARGET_UID="\$(id -u "\$TARGET_USER" 2>/dev/null || echo 1000)"
+TARGET_GID="\$(id -g "\$TARGET_USER" 2>/dev/null || echo 1000)"
 
-findmnt -rn -o SOURCE "$DEVNODE" >/dev/null 2>&1 && exit 0
+findmnt -rn -o SOURCE "\$DEVNODE" >/dev/null 2>&1 && exit 0
 
-case "$ACTION" in
+case "\$ACTION" in
 add)
-    mkdir -p "$MOUNT_POINT"
-    FSTYPE="$(blkid -o value -s TYPE "$DEVNODE" 2>/dev/null)"
-    case "$FSTYPE" in
+    mkdir -p "\$MOUNT_POINT"
+    FSTYPE="\$(blkid -o value -s TYPE "\$DEVNODE" 2>/dev/null)"
+    case "\$FSTYPE" in
         vfat)
-            mount -t vfat -o uid="$TARGET_UID",gid="$TARGET_GID",utf8,dmask=022,fmask=133 "$DEVNODE" "$MOUNT_POINT"
+            mount -t vfat -o uid="\$TARGET_UID",gid="\$TARGET_GID",utf8,dmask=022,fmask=133 "\$DEVNODE" "\$MOUNT_POINT"
             ;;
         exfat)
-            mount -t exfat -o uid="$TARGET_UID",gid="$TARGET_GID" "$DEVNODE" "$MOUNT_POINT"
+            mount -t exfat -o uid="\$TARGET_UID",gid="\$TARGET_GID" "\$DEVNODE" "\$MOUNT_POINT"
             ;;
         ntfs)
-            ntfs-3g -o uid="$TARGET_UID",gid="$TARGET_GID" "$DEVNODE" "$MOUNT_POINT"
+            ntfs-3g -o uid="\$TARGET_UID",gid="\$TARGET_GID" "\$DEVNODE" "\$MOUNT_POINT"
             ;;
         iso9660)
-            mount -t iso9660 -o uid="$TARGET_UID",gid="$TARGET_GID",ro "$DEVNODE" "$MOUNT_POINT"
+            mount -t iso9660 -o uid="\$TARGET_UID",gid="\$TARGET_GID",ro "\$DEVNODE" "\$MOUNT_POINT"
             ;;
         *)
-            mount "$DEVNODE" "$MOUNT_POINT"
-            chown "$TARGET_UID":"$TARGET_GID" "$MOUNT_POINT"
+            mount "\$DEVNODE" "\$MOUNT_POINT"
+            chown "\$TARGET_UID":"\$TARGET_GID" "\$MOUNT_POINT"
             ;;
     esac
     ;;
 remove)
-    umount "$MOUNT_POINT" 2>/dev/null
-    rmdir "$MOUNT_POINT" 2>/dev/null
+    umount "\$MOUNT_POINT" 2>/dev/null
+    rmdir "\$MOUNT_POINT" 2>/dev/null
     ;;
 esac
 AUTOMOUNT
