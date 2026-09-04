@@ -592,24 +592,6 @@ context.properties = {
 }
 PWNORTKIT
 
-NO_RTKIT_AWK='
-/libpipewire-module-rt/ {
-    if (prev ~ /^[[:space:]]*\{[[:space:]]*$/) prev = ""
-    else if (prev != "") print prev
-    prev = ""
-    skip = 1; next
-}
-skip == 1 && /flags/ { skip = 2; next }
-skip == 2 { skip = 0; next }
-skip { next }
-{ if (prev != "") print prev; prev = $0 }
-END { if (skip == 0 && prev != "") print prev }
-'
-echo "$NO_RTKIT_AWK" | awk -f /dev/stdin \
-    /usr/share/pipewire/pipewire-pulse.conf > /etc/pipewire/pipewire-pulse.conf
-
-echo "$NO_RTKIT_AWK" | awk -f /dev/stdin \
-    /usr/share/wireplumber/wireplumber.conf > /etc/wireplumber/wireplumber.conf
 
 cat >> /etc/security/limits.conf <<LIMITSCONF
 ${USERNAME}    soft    nofile  524288
@@ -825,6 +807,7 @@ esac
 AUTOMOUNT
 sed -i "s/__USERNAME__/${USERNAME}/g" /usr/local/bin/block-automount
 chmod +x /usr/local/bin/block-automount
+grep -q 'ACTION="\$1"' /usr/local/bin/block-automount || { echo "ERROR: block-automount not written correctly"; exit 1; }
 
 mkdir -p /etc/udev/rules.d
 cat > /etc/udev/rules.d/99-block-automount.rules <<'UDEVRULES'
