@@ -24,12 +24,6 @@ case $- in
 esac
 
 if [ -z "$WAYLAND_DISPLAY" ] && [ -z "$DISPLAY" ] && [ "$(tty)" = "/dev/tty1" ]; then
-  FIRST_BOOT_MARKER="$XDG_STATE_HOME/resolvconf-first-boot-done"
-  if [ ! -f "$FIRST_BOOT_MARKER" ]; then
-    sudo -n resolvconf -u >/dev/null 2>&1
-    mkdir -p "$(dirname "$FIRST_BOOT_MARKER")"
-    touch "$FIRST_BOOT_MARKER"
-  fi
   exec ~/.config/scripts/startdwl
 fi
 
