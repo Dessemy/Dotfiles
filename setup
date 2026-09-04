@@ -38,10 +38,10 @@ read -rp "Mirror country code (blank = worldwide, e.g. ID/US/SG/JP/DE): " MIRROR
 read -rp "EFI partition size in MiB [512]: " EFI_SIZE
 EFI_SIZE=${EFI_SIZE:-512}
 echo "Available kernels:"
-echo "  1) linux (stable, default)"
-echo "  2) linux-lts (long-term support)"
-echo "  3) linux-zen (performance-tuned)"
-echo "  4) linux-hardened (security-focused)"
+echo "  1) linux"
+echo "  2) linux-lts"
+echo "  3) linux-zen"
+echo "  4) linux-hardened"
 read -rp "Select kernel [1]: " KERNEL_CHOICE
 KERNEL_CHOICE=${KERNEL_CHOICE:-1}
 case "$KERNEL_CHOICE" in
@@ -51,7 +51,7 @@ case "$KERNEL_CHOICE" in
     4) KERNEL_PKG="linux-hardened" ;;
     *) error "Invalid kernel choice." ;;
 esac
-read -rp "Root filesystem [ext4/btrfs] (default: ext4): " ROOTFS
+read -rp "Root filesystem ext4/btrfs [ext4]: " ROOTFS
 ROOTFS=${ROOTFS:-ext4}
 case "$ROOTFS" in
     ext4|btrfs) ;;
@@ -142,7 +142,7 @@ else
 fi
 sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 5/' /etc/pacman.conf 2>/dev/null || true
 pacman -Syy --noconfirm || true
-BASESTRAP_PKGS="base base-devel dbus-runit ${KERNEL_PKG} linux-firmware ${KERNEL_PKG}-headers git wget curl bash-completion tree less usbutils seatd-runit pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber alsa-utils iwd-runit inetutils openresolv grub efibootmgr bluez bluez-runit ntfs-3g dosfstools exfatprogs"
+BASESTRAP_PKGS="base base-devel dbus-runit ${KERNEL_PKG} linux-firmware ${KERNEL_PKG}-headers git wget curl bash-completion tree less usbutils seatd-runit pipewire pipewire-alsa pipewire-pulse pipewire-jack wireplumber alsa-utils iwd-runit inetutils openresolv grub efibootmgr bluez-utils bluez-runit ntfs-3g dosfstools exfatprogs"
 if [ "$ROOTFS" = "btrfs" ]; then
     BASESTRAP_PKGS="$BASESTRAP_PKGS btrfs-progs"
 else
@@ -577,20 +577,40 @@ enable_svc dbus
 enable_svc iwd
 enable_svc bluetoothd
 
+mkdir -p /etc/resolv.conf.d
+cat > /etc/resolv.conf.d/base <<'RESOLVBASE'
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+RESOLVBASE
+resolvconf -u
+
 usermod -aG audio,video,lp,storage "${USERNAME}"
 
-mkdir -p /etc/pipewire/pipewire.conf.d /etc/pipewire/pipewire-pulse.conf.d /etc/wireplumber/wireplumber.conf.d
+mkdir -p /etc/pipewire/pipewire.conf.d /etc/wireplumber/wireplumber.conf.d
 cat > /etc/pipewire/pipewire.conf.d/99-no-rtkit.conf <<'PWNORTKIT'
 context.properties = {
     module.rt = false
 }
 PWNORTKIT
-cp /etc/pipewire/pipewire.conf.d/99-no-rtkit.conf /etc/pipewire/pipewire-pulse.conf.d/99-no-rtkit.conf
-cat > /etc/wireplumber/wireplumber.conf.d/99-no-rtkit.conf <<'WPNORTKIT'
-context.properties = {
-    module.rt = false
+
+NO_RTKIT_AWK='
+/libpipewire-module-rt/ {
+    if (prev ~ /^[[:space:]]*\{[[:space:]]*$/) prev = ""
+    else if (prev != "") print prev
+    prev = ""
+    skip = 1; next
 }
-WPNORTKIT
+skip == 1 && /flags/ { skip = 2; next }
+skip == 2 { skip = 0; next }
+skip { next }
+{ if (prev != "") print prev; prev = $0 }
+END { if (skip == 0 && prev != "") print prev }
+'
+echo "$NO_RTKIT_AWK" | awk -f /dev/stdin \
+    /usr/share/pipewire/pipewire-pulse.conf > /etc/pipewire/pipewire-pulse.conf
+
+echo "$NO_RTKIT_AWK" | awk -f /dev/stdin \
+    /usr/share/wireplumber/wireplumber.conf > /etc/wireplumber/wireplumber.conf
 
 cat >> /etc/security/limits.conf <<LIMITSCONF
 ${USERNAME}    soft    nofile  524288
@@ -718,14 +738,6 @@ chmod 0440 /etc/sudoers.d/30-vpn
 visudo -cf /etc/sudoers.d/30-vpn \
     || true
 
-RESOLVCONF_BIN="\$(command -v resolvconf || echo /usr/bin/resolvconf)"
-cat > /etc/sudoers.d/31-resolvconf <<SUDOERS
-%wheel ALL=(root) NOPASSWD: \${RESOLVCONF_BIN} -u
-SUDOERS
-chmod 0440 /etc/sudoers.d/31-resolvconf
-visudo -cf /etc/sudoers.d/31-resolvconf \
-    || true
-
 cat > /etc/sudoers.d/32-powerctl <<'SUDOERS'
 %wheel ALL=(root) NOPASSWD: /usr/local/bin/powerctl apply *, /usr/local/bin/powerctl reapply, /usr/local/bin/powerctl query
 SUDOERS
@@ -742,6 +754,14 @@ visudo -cf /etc/sudoers.d/33-dgpu \
     || true
 fi
 
+LF_BIN="\$(command -v lf || echo /usr/bin/lf)"
+cat > /etc/sudoers.d/40-lf <<SUDOERS
+%wheel ALL=(root) NOPASSWD: \${LF_BIN}
+SUDOERS
+chmod 0440 /etc/sudoers.d/40-lf
+visudo -cf /etc/sudoers.d/40-lf \
+    || true
+
 su - "${USERNAME}" -c 'src=\$(mktemp -d) \
     && git clone --recursive --depth 1 https://github.com/akinomyoga/ble.sh.git "\$src" \
     && make -C "\$src" install PREFIX="\$HOME/.local" \
@@ -753,47 +773,71 @@ rm -f /etc/sudoers.d/20-wheel-nopass
 enable_svc seatd
 usermod -aG seat "${USERNAME}"
 
-cat > /usr/local/bin/usb-automount <<AUTOMOUNT
-#!/bin/bash
-ACTION="\$1"
-DEV="\$2"
-DEVNODE="/dev/\$DEV"
-MOUNT_POINT="/media/\$DEV"
-TARGET_USER="${USERNAME}"
-TARGET_UID="\$(id -u "\$TARGET_USER" 2>/dev/null || echo 1000)"
-TARGET_GID="\$(id -g "\$TARGET_USER" 2>/dev/null || echo 1000)"
+# Tanpa elogind, tidak ada yang membuat /run/user/<uid> + XDG_RUNTIME_DIR
+# saat login. Service oneshot ini menggantikan tugas itu di setiap boot.
+make_svc runtimedir <<'RUNTIMEDIRSV'
+#!/bin/sh
+u="\$(id -u ${USERNAME} 2>/dev/null)" || exit 0
+mkdir -p "/run/user/\$u"
+chown ${USERNAME}:${USERNAME} "/run/user/\$u"
+chmod 0700 "/run/user/\$u"
+exec sv down runtimedir
+RUNTIMEDIRSV
 
-case "\$ACTION" in
+mkdir -p /media
+cat > /usr/local/bin/block-automount <<'AUTOMOUNT'
+#!/bin/bash
+ACTION="$1"
+DEV="$2"
+DEVNODE="/dev/$DEV"
+MOUNT_POINT="/media/$DEV"
+TARGET_USER="__USERNAME__"
+TARGET_UID="$(id -u "$TARGET_USER" 2>/dev/null || echo 1000)"
+TARGET_GID="$(id -g "$TARGET_USER" 2>/dev/null || echo 1000)"
+
+findmnt -rn -o SOURCE "$DEVNODE" >/dev/null 2>&1 && exit 0
+
+case "$ACTION" in
 add)
-    mkdir -p "\$MOUNT_POINT"
-    FSTYPE="\$(blkid -o value -s TYPE "\$DEVNODE" 2>/dev/null)"
-    case "\$FSTYPE" in
+    mkdir -p "$MOUNT_POINT"
+    FSTYPE="$(blkid -o value -s TYPE "$DEVNODE" 2>/dev/null)"
+    case "$FSTYPE" in
         vfat)
-            mount -t vfat -o uid="\$TARGET_UID",gid="\$TARGET_GID",utf8,dmask=022,fmask=133 "\$DEVNODE" "\$MOUNT_POINT"
+            mount -t vfat -o uid="$TARGET_UID",gid="$TARGET_GID",utf8,dmask=022,fmask=133 "$DEVNODE" "$MOUNT_POINT"
             ;;
         exfat)
-            mount -t exfat -o uid="\$TARGET_UID",gid="\$TARGET_GID" "\$DEVNODE" "\$MOUNT_POINT"
+            mount -t exfat -o uid="$TARGET_UID",gid="$TARGET_GID" "$DEVNODE" "$MOUNT_POINT"
             ;;
         ntfs)
-            ntfs-3g -o uid="\$TARGET_UID",gid="\$TARGET_GID" "\$DEVNODE" "\$MOUNT_POINT"
+            ntfs-3g -o uid="$TARGET_UID",gid="$TARGET_GID" "$DEVNODE" "$MOUNT_POINT"
+            ;;
+        iso9660)
+            mount -t iso9660 -o uid="$TARGET_UID",gid="$TARGET_GID",ro "$DEVNODE" "$MOUNT_POINT"
             ;;
         *)
-            mount "\$DEVNODE" "\$MOUNT_POINT"
-            chown "\$TARGET_UID":"\$TARGET_GID" "\$MOUNT_POINT"
+            mount "$DEVNODE" "$MOUNT_POINT"
+            chown "$TARGET_UID":"$TARGET_GID" "$MOUNT_POINT"
             ;;
     esac
     ;;
 remove)
-    umount "\$MOUNT_POINT" 2>/dev/null
-    rmdir "\$MOUNT_POINT" 2>/dev/null
+    umount "$MOUNT_POINT" 2>/dev/null
+    rmdir "$MOUNT_POINT" 2>/dev/null
     ;;
 esac
 AUTOMOUNT
-chmod +x /usr/local/bin/usb-automount
+sed -i "s/__USERNAME__/${USERNAME}/g" /mnt/usr/local/bin/block-automount
+chmod +x /mnt/usr/local/bin/block-automount
 
-cat > /etc/udev/rules.d/99-usb-automount.rules <<'UDEVRULES'
-KERNEL=="sd[a-z][0-9]", SUBSYSTEMS=="usb", ACTION=="add", RUN+="/usr/local/bin/usb-automount add %k"
-KERNEL=="sd[a-z][0-9]", SUBSYSTEMS=="usb", ACTION=="remove", RUN+="/usr/local/bin/usb-automount remove %k"
+cat > /mnt/etc/udev/rules.d/99-block-automount.rules <<'UDEVRULES'
+KERNEL=="sd[a-z][0-9]", SUBSYSTEMS=="usb", ACTION=="add", RUN+="/usr/local/bin/block-automount add %k"
+KERNEL=="sd[a-z][0-9]", SUBSYSTEMS=="usb", ACTION=="remove", RUN+="/usr/local/bin/block-automount remove %k"
+KERNEL=="sd[a-z][0-9]", KERNELS=="ata*", ACTION=="add", RUN+="/usr/local/bin/block-automount add %k"
+KERNEL=="sd[a-z][0-9]", KERNELS=="ata*", ACTION=="remove", RUN+="/usr/local/bin/block-automount remove %k"
+KERNEL=="nvme[0-9]*n[0-9]*p[0-9]*", ACTION=="add", RUN+="/usr/local/bin/block-automount add %k"
+KERNEL=="nvme[0-9]*n[0-9]*p[0-9]*", ACTION=="remove", RUN+="/usr/local/bin/block-automount remove %k"
+KERNEL=="mmcblk[0-9]*p[0-9]*", ACTION=="add", RUN+="/usr/local/bin/block-automount add %k"
+KERNEL=="mmcblk[0-9]*p[0-9]*", ACTION=="remove", RUN+="/usr/local/bin/block-automount remove %k"
 UDEVRULES
 
 make_svc zram <<'ZRAMSV'
@@ -844,6 +888,31 @@ fi
 grub-mkconfig -o /boot/grub/grub.cfg
 
 chown -R ${USERNAME}:${USERNAME} "/home/${USERNAME}"
+
+RMOVE_PASS1="flatpak python-dbusmock nvidia-settings"
+RMOVE_PASS1="${RMOVE_PASS1} gtk3 at-spi2-core tinysparql"
+RMOVE_PASS1="${RMOVE_PASS1} adwaita-cursors adwaita-fonts adwaita-icon-theme adwaita-icon-theme-legacy"
+RMOVE_PASS1="${RMOVE_PASS1} gsettings-desktop-schemas gsettings-system-schemas dconf gtk-update-icon-cache"
+RMOVE_PASS1="${RMOVE_PASS1} docbook-xsl meson xmlto python-pytest-xdist"
+RMOVE_PASS1="${RMOVE_PASS1} python-sphinx-copybutton python-sphinx-furo python-sphinxext-opengraph umockdev"
+
+RMOVE_PASS2="libmalcontent accountsservice polkit elogind libelogind libportal"
+RMOVE_PASS2="${RMOVE_PASS2} ostree geoclue python-gobject gst-plugins-good"
+
+for pkg in ${RMOVE_PASS1} ${RMOVE_PASS2}; do
+    if pacman -Qi "${pkg}" &>/dev/null; then
+        echo "  Removing ${pkg}..."
+        pacman -Rns --noconfirm "${pkg}" 2>/dev/null || true
+    fi
+done
+
+rm -f /etc/runit/runsvdir/default/logind 2>/dev/null || true
+rm -rf /etc/runit/sv/logind 2>/dev/null || true
+
+for tty in tty3 tty4 tty5 tty6; do
+    rm -f "/etc/runit/runsvdir/default/agetty-${tty}" 2>/dev/null || true
+    rm -rf "/etc/runit/sv/agetty-${tty}" 2>/dev/null || true
+done
 
 rm -f /root/dwl-build.log
 rm -rf /root/dwl-src /root/dotfiles-src
