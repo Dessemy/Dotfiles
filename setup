@@ -773,8 +773,6 @@ rm -f /etc/sudoers.d/20-wheel-nopass
 enable_svc seatd
 usermod -aG seat "${USERNAME}"
 
-# Tanpa elogind, tidak ada yang membuat /run/user/<uid> + XDG_RUNTIME_DIR
-# saat login. Service oneshot ini menggantikan tugas itu di setiap boot.
 make_svc runtimedir <<'RUNTIMEDIRSV'
 #!/bin/sh
 u="\$(id -u ${USERNAME} 2>/dev/null)" || exit 0
