@@ -582,7 +582,6 @@ cat > /etc/resolv.conf.d/base <<'RESOLVBASE'
 nameserver 1.1.1.1
 nameserver 8.8.8.8
 RESOLVBASE
-resolvconf -u
 
 usermod -aG audio,video,lp,storage "${USERNAME}"
 
