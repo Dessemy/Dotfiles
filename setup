@@ -823,10 +823,11 @@ remove)
     ;;
 esac
 AUTOMOUNT
-sed -i "s/__USERNAME__/${USERNAME}/g" /mnt/usr/local/bin/block-automount
-chmod +x /mnt/usr/local/bin/block-automount
+sed -i "s/__USERNAME__/${USERNAME}/g" /usr/local/bin/block-automount
+chmod +x /usr/local/bin/block-automount
 
-cat > /mnt/etc/udev/rules.d/99-block-automount.rules <<'UDEVRULES'
+mkdir -p /etc/udev/rules.d
+cat > /etc/udev/rules.d/99-block-automount.rules <<'UDEVRULES'
 KERNEL=="sd[a-z][0-9]", SUBSYSTEMS=="usb", ACTION=="add", RUN+="/usr/local/bin/block-automount add %k"
 KERNEL=="sd[a-z][0-9]", SUBSYSTEMS=="usb", ACTION=="remove", RUN+="/usr/local/bin/block-automount remove %k"
 KERNEL=="sd[a-z][0-9]", KERNELS=="ata*", ACTION=="add", RUN+="/usr/local/bin/block-automount add %k"
