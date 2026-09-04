@@ -751,7 +751,15 @@ su - "${USERNAME}" -c 'src=\$(mktemp -d) \
 
 rm -f /etc/sudoers.d/20-wheel-nopass
 
-enable_svc seatd
+make_svc seatd <<'SEATDSV'
+#!/bin/sh
+set -e
+
+sv start dbus >/dev/null
+
+exec 3>/run/seatd.notification-fd
+exec /usr/bin/seatd -g seat -n 3 -l error 2>&1
+SEATDSV
 usermod -aG seat "${USERNAME}"
 
 make_svc runtimedir <<'RUNTIMEDIRSV'
