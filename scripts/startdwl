@@ -19,7 +19,7 @@ exec dbus-run-session -- sh -c '
 	pkill -9 -x xdg-desktop-portal-wlr 2>/dev/null
 	pkill -9 -x xdg-desktop-portal 2>/dev/null
 
-	CLIPSTART="wl-paste --type text --watch cliphist store & wl-paste --type image --watch cliphist store &"
+	CLIPSTART="wl-paste --type text --watch cliphist store </dev/null >/dev/null 2>&1 & wl-paste --type image --watch cliphist store </dev/null >/dev/null 2>&1 &"
 
 	WALLPAPER="$(cat "$HOME/.cache/current_wallpaper" 2>/dev/null)"
 	if [ -n "$WALLPAPER" ] && [ -f "$WALLPAPER" ]; then
