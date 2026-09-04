@@ -50,6 +50,28 @@ vim.api.nvim_create_autocmd("FileType", {
   end,
 })
 
+vim.api.nvim_create_autocmd("FileType", {
+  desc = "Keymap to run the current Go file in a terminal split",
+  pattern = "go",
+  callback = function(args)
+    vim.keymap.set("n", "<leader>gr", function()
+      vim.cmd("write")
+      vim.cmd("split | terminal go run " .. vim.fn.shellescape(vim.fn.expand("%")))
+    end, { buffer = args.buf, desc = "Run Go file" })
+  end,
+})
+
+vim.api.nvim_create_autocmd("FileType", {
+  desc = "Keymap to run the current Rust file in a terminal split",
+  pattern = "rust",
+  callback = function(args)
+    vim.keymap.set("n", "<leader>rr", function()
+      vim.cmd("write")
+      vim.cmd("split | terminal cargo run")
+    end, { buffer = args.buf, desc = "Run Rust project" })
+  end,
+})
+
 vim.api.nvim_create_autocmd("TextYankPost", {
   desc = "Highlight yanked text",
   group = vim.api.nvim_create_augroup("kickstart-highlight-yank", { clear = true }),
@@ -164,6 +186,7 @@ require("lazy").setup({
         "bash", "c", "diff", "html", "css", "javascript", "typescript", "tsx",
         "json", "lua", "luadoc", "markdown", "markdown_inline", "python",
         "query", "regex", "rust", "go", "yaml", "toml", "vim", "vimdoc",
+        "cpp", "c_sharp", "java", "sql", "dockerfile",
       },
       auto_install = true,
       highlight = { enable = true },
@@ -209,6 +232,8 @@ require("lazy").setup({
         typescript = { "prettierd", "prettier", stop_after_first = true },
         json = { "prettierd", "prettier", stop_after_first = true },
         sh = { "shfmt" },
+        go = { "goimports", "gofumpt" },
+        rust = { "rustfmt" },
       },
     },
   },
@@ -221,7 +246,7 @@ require("lazy").setup({
       {
         "WhoIsSethDaniel/mason-tool-installer.nvim",
         opts = {
-          ensure_installed = { "ruff", "eslint_d", "shellcheck", "debugpy", "delve" },
+          ensure_installed = { "ruff", "eslint_d", "shellcheck", "debugpy", "delve", "goimports", "gofumpt", "golangci-lint", "rust-analyzer" },
         },
       },
       "saghen/blink.cmp",
@@ -237,6 +262,9 @@ require("lazy").setup({
         jsonls = {},
         html = {},
         cssls = {},
+        gopls = {},
+        rust_analyzer = {},
+        clangd = {},
       }
 
       require("mason-lspconfig").setup({
@@ -294,6 +322,8 @@ require("lazy").setup({
         javascript = { "eslint_d" },
         typescript = { "eslint_d" },
         sh = { "shellcheck" },
+        go = { "golangci-lint" },
+        rust = { "clippy" },
       }
 
       vim.api.nvim_create_autocmd({ "BufWritePost", "BufReadPost", "InsertLeave" }, {
@@ -328,7 +358,7 @@ require("lazy").setup({
 
       local mason_debugpy = vim.fn.stdpath("data") .. "/mason/packages/debugpy/venv/bin/python"
       require("dap-python").setup(mason_debugpy)
-      require("dap-go").setup()
+      require("dap-go").setup({ delve = { path = "dlv" } })
 
       dap.listeners.after.event_initialized["dapui_config"] = function()
         dapui.open()
