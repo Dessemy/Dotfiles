@@ -8,11 +8,12 @@ export XDG_CURRENT_DESKTOP=wlroots
 export XDG_SESSION_TYPE=wayland
 
 exec dbus-run-session -- sh -c '
-	pipewire &
+	pipewire >/dev/null 2>&1 &
 	PW_PID=$!
-	pipewire-pulse &
+	sleep 1
+	pipewire-pulse >/dev/null 2>&1 &
 	PWPULSE_PID=$!
-	wireplumber &
+	wireplumber >/dev/null 2>&1 &
 	WP_PID=$!
 
 	pkill -9 -x xdg-desktop-portal-wlr 2>/dev/null
