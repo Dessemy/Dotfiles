@@ -7,7 +7,7 @@ brightnessctl set 1% >/dev/null 2>&1
 export XDG_CURRENT_DESKTOP=wlroots
 export XDG_SESSION_TYPE=wayland
 
-exec dbus-run-session -- sh -c '
+exec dbus-run-session 2>/dev/null -- sh -c '
 	pipewire >/dev/null 2>&1 &
 	PW_PID=$!
 	sleep 1
