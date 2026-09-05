@@ -96,7 +96,22 @@ cmd open ${{
 		*.tbz2 | *.tar.gz | *.tgz | *.tar.lzma | \
 		*.tar.xz | *.txz | *.zip | *.rar | *.iso | \
 		*.7z | *.cab | *.lha | *.lzh | *.arj | *.ace)
-			aunpack $fx
+			clear; tput cup $(($(tput lines)/3)); tput bold
+			printf -- "%s\n" "$f"
+			printf "\t[v]iew (mount)  [e]xtract  [N]batal: "
+			read -r REPLY
+			case "$REPLY" in
+			(v|V)
+				real_f="$(readlink -f "$f" || realpath "$f")"
+				mp="$HOME/.local/share/lf/mounts/$(basename "$real_f")"
+				mkdir -p "$mp"
+				archivemount "$real_f" "$mp"
+				lf -remote "send $id cd \"$mp\""
+			;;
+			(e|E)
+				aunpack $fx
+			;;
+			esac
 		;;
 		(*)
 			for f in $fx; do
@@ -272,6 +287,7 @@ cmd compress ${{
 	printf "\t4) tar.bz2\n"
 	printf "\t5) tar.xz\n"
 	printf "\t6) 7z\n"
+	printf "\t7) rar\n"
 	printf "\tChoice: "
 	read -r choice
 	case "$choice" in
@@ -281,6 +297,7 @@ cmd compress ${{
 		4) ext=tar.bz2 ;;
 		5) ext=tar.xz ;;
 		6) ext=7z ;;
+		7) ext=rar ;;
 		(*) exit 0 ;;
 	esac
 	printf "\tArchive name (without extension): "
@@ -427,6 +444,19 @@ cmd paste_link %{{
 	lf -remote "send clear"
 }}
 
+cmd unmount_archive ${{
+	case "$PWD" in
+	("$HOME/.local/share/lf/mounts/"*)
+		mp="$PWD"
+		lf -remote "send $id updir"
+		fusermount -u "$mp" 2>/dev/null && rmdir "$mp" 2>/dev/null
+	;;
+	(*)
+		lf -remote "send $id echo 'bukan folder mount archive'"
+	;;
+	esac
+}}
+
 cmd follow_link %{{
 	lf -remote "send ${id} select \"$(readlink $f)\""
 }}
@@ -491,6 +521,7 @@ map z<space> push :zoxide<space>
 map <a-z> zoxide_i
 map zo zoxide_i
 map gl follow_link
+map gu unmount_archive
 map gr cd /
 map gt cd /tmp
 map J jumps
@@ -529,5 +560,3 @@ map <c-z> stop
 map W &{ nohup "${TERMINAL:-foot}" >/dev/null 2>&1& }
 
 map Y $printf "%s" "$fx" | wl-copy
-
-
