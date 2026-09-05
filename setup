@@ -577,6 +577,27 @@ enable_svc dbus
 enable_svc iwd
 enable_svc bluetoothd
 
+make_svc dbus <<'DBUSSV'
+#!/bin/sh
+dbus-uuidgen --ensure=/etc/machine-id
+[ -d /run/dbus ] || install -m755 -g 81 -o 81 -d /run/dbus
+exec dbus-daemon --system --nofork --nopidfile 2>&1
+DBUSSV
+
+make_svc bluetoothd <<'BTDSV'
+#!/bin/sh
+sv check dbus >/dev/null || exit 1
+exec /usr/lib/bluetooth/bluetoothd -n >/dev/null 2>&1
+BTDSV
+
+rm -f /etc/runit/runsvdir/default/agetty-tty3
+rm -f /etc/runit/runsvdir/default/agetty-tty4
+rm -f /etc/runit/runsvdir/default/agetty-tty5
+rm -f /etc/runit/runsvdir/default/agetty-tty6
+rm -f /etc/runit/runsvdir/default/agetty-ttyAMA0
+rm -f /etc/runit/runsvdir/default/agetty-ttyS0
+rm -f /etc/runit/runsvdir/default/agetty-ttyUSB0
+
 mkdir -p /etc/resolv.conf.d
 cat > /etc/resolv.conf.d/base <<'RESOLVBASE'
 nameserver 1.1.1.1
@@ -758,7 +779,7 @@ set -e
 sv start dbus >/dev/null
 
 exec 3>/run/seatd.notification-fd
-exec /usr/bin/seatd -g seat -n 3 -l error 2>&1
+exec /usr/bin/seatd -g seat -n 3 -l error >/dev/null 2>&1
 SEATDSV
 usermod -aG seat "${USERNAME}"
 
