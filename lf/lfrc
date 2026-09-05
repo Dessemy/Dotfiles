@@ -98,7 +98,7 @@ cmd open ${{
 		*.7z | *.cab | *.lha | *.lzh | *.arj | *.ace)
 			clear; tput cup $(($(tput lines)/3)); tput bold
 			printf -- "%s\n" "$f"
-			printf "\t[v]iew (mount)  [e]xtract  [N]batal: "
+			printf "\t[v]iew (mount)  [e]xtract  [N]cancel: "
 			read -r REPLY
 			case "$REPLY" in
 			(v|V)
@@ -109,7 +109,18 @@ cmd open ${{
 				lf -remote "send $id cd \"$mp\""
 			;;
 			(e|E)
-				aunpack $fx
+				for f in $fx; do
+					case "$f" in
+					(*.iso)
+						dest="${f%.iso}"
+						mkdir -p "$dest"
+						7z x -o"$dest" -- "$f"
+					;;
+					(*)
+						aunpack "$f"
+					;;
+					esac
+				done
 			;;
 			esac
 		;;
@@ -314,7 +325,20 @@ cmd extract ${{
 	printf "\t\033[1;34mExtract? \033[37m[\033[32my\033[37m/\033[31mN\033[37m]\033[m "
 	read -r REPLY
 	case "$REPLY" in
-		[yY]) aunpack $fx ;;
+		[yY])
+			for f in $fx; do
+				case "$f" in
+				(*.iso)
+					dest="${f%.iso}"
+					mkdir -p "$dest"
+					7z x -o"$dest" -- "$f"
+				;;
+				(*)
+					aunpack "$f"
+				;;
+				esac
+			done
+		;;
 	esac
 }}
 
@@ -452,7 +476,7 @@ cmd unmount_archive ${{
 		fusermount -u "$mp" 2>/dev/null && rmdir "$mp" 2>/dev/null
 	;;
 	(*)
-		lf -remote "send $id echo 'bukan folder mount archive'"
+		lf -remote "send $id echo 'not an archive mount folder'"
 	;;
 	esac
 }}
