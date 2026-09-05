@@ -590,14 +590,6 @@ sv check dbus >/dev/null || exit 1
 exec /usr/lib/bluetooth/bluetoothd -n >/dev/null 2>&1
 BTDSV
 
-rm -f /etc/runit/runsvdir/default/agetty-tty3
-rm -f /etc/runit/runsvdir/default/agetty-tty4
-rm -f /etc/runit/runsvdir/default/agetty-tty5
-rm -f /etc/runit/runsvdir/default/agetty-tty6
-rm -f /etc/runit/runsvdir/default/agetty-ttyAMA0
-rm -f /etc/runit/runsvdir/default/agetty-ttyS0
-rm -f /etc/runit/runsvdir/default/agetty-ttyUSB0
-
 mkdir -p /etc/resolv.conf.d
 cat > /etc/resolv.conf.d/base <<'RESOLVBASE'
 nameserver 1.1.1.1
@@ -919,10 +911,7 @@ done
 rm -f /etc/runit/runsvdir/default/logind 2>/dev/null || true
 rm -rf /etc/runit/sv/logind 2>/dev/null || true
 
-for tty in tty3 tty4 tty5 tty6; do
-    rm -f "/etc/runit/runsvdir/default/agetty-${tty}" 2>/dev/null || true
-    rm -rf "/etc/runit/sv/agetty-${tty}" 2>/dev/null || true
-done
+rm -rf /etc/runit/runsvdir/default/agetty-tty{3,4,5,6,AMA0,S0,USB0} /etc/runit/sv/agetty-tty{3,4,5,6,AMA0,S0,USB0}
 
 rm -f /root/dwl-build.log
 rm -rf /root/dwl-src /root/dotfiles-src
