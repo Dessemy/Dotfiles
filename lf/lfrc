@@ -3,7 +3,7 @@ set hidden!
 set hiddenfiles ".*:*.aux:*.log:*.bbl:*.bcf:*.blg:*.run.xml"
 set previewer '~/.config/scripts/previewer'
 set incsearch
-map <esc> unselect
+map <esc> :unselect; clear
 set incfilter
 set ratios 2:3:4
 set truncatechar "~"
@@ -87,9 +87,6 @@ cmd open ${{
 		(*) dem "${VIDEO_PLAYER:-"${MPV:-mpv}"}" $fx
 		esac
 	;;
-	(application/zip)
-		aunpack $fx
-	;;
 	(*)
 		case "$f" in
 		( *.tar.bz | *.tar.bz2 | *.tbz | \
@@ -113,14 +110,20 @@ cmd open ${{
 					case "$f" in
 					(*.iso)
 						dest="${f%.iso}"
+						if [ -e "$dest" ]; then
+							i=1
+							while [ -e "${dest}_${i}" ]; do i=$((i+1)); done
+							dest="${dest}_${i}"
+						fi
 						mkdir -p "$dest"
 						7z x -o"$dest" -- "$f"
 					;;
 					(*)
-						aunpack "$f"
+						~/.config/scripts/extract "$f"
 					;;
 					esac
 				done
+				lf -remote "send $id reload"
 			;;
 			esac
 		;;
@@ -229,6 +232,8 @@ cmd openwith ${{
 
 %test $LF_LEVEL -eq 1 || >&2 printf "Warning: You're in a nested lf instance!"
 
+cmd on-quit %rm -f "${XDG_DATA_HOME:-$HOME/.local/share}/lf/files"
+
 cmd mkdir $mkdir -p "$(echo $* | tr ' ' '\ ')"
 cmd trash %trash-put $fx
 
@@ -330,14 +335,20 @@ cmd extract ${{
 				case "$f" in
 				(*.iso)
 					dest="${f%.iso}"
+					if [ -e "$dest" ]; then
+						i=1
+						while [ -e "${dest}_${i}" ]; do i=$((i+1)); done
+						dest="${dest}_${i}"
+					fi
 					mkdir -p "$dest"
 					7z x -o"$dest" -- "$f"
 				;;
 				(*)
-					aunpack "$f"
+					~/.config/scripts/extract "$f"
 				;;
 				esac
 			done
+			lf -remote "send $id reload"
 		;;
 	esac
 }}
@@ -402,6 +413,33 @@ cmd paste_force %{{
 		printf '%s' "$newname"
 	}
 
+	overwrite() {
+		case "$mode" in
+		copy) cp -rf -- "$1" "$2" ;;
+		move)
+			merge_dir() {
+				local s="$1" t="$2"
+				local item dest_item
+				for item in "$s"/* "$s"/.[!.]* "$s"/..?*; do
+					[ -e "$item" ] || continue
+					dest_item="$t/$(basename -- "$item")"
+					if [ -d "$item" ] && [ -d "$dest_item" ]; then
+						merge_dir "$item" "$dest_item"
+					else
+						mv -f -- "$item" "$dest_item"
+					fi
+				done
+				rmdir "$s" 2>/dev/null
+			}
+			if [ -d "$1" ] && [ -d "$2" ]; then
+				merge_dir "$1" "$2"
+			else
+				mv -f -- "$1" "$2"
+			fi
+		;;
+		esac
+	}
+
 	replace_all=0
 	for f in "$@"; do
 		name=$(basename -- "$f")
@@ -418,16 +456,10 @@ cmd paste_force %{{
 			case "$REPLY" in
 			a)
 				replace_all=1
-				case "$mode" in
-				copy) cp -rf -- "$f" "$dest" ;;
-				move) mv -f -- "$f" "$dest" ;;
-				esac
+				overwrite "$f" "$dest"
 			;;
 			y)
-				case "$mode" in
-				copy) cp -rf -- "$f" "$dest" ;;
-				move) mv -f -- "$f" "$dest" ;;
-				esac
+				overwrite "$f" "$dest"
 			;;
 			(*)
 				newname=$(rename_conflict "$name")
@@ -568,12 +600,12 @@ cmap <a-,> cmd-delete
 
 map c
 map r rename_nvim
-map i rename
-map A push i<a-A>
-map cc push i<a-A><c-u>
+map i
+map A push r<a-A>
+map cc push r<a-A><c-u>
 map ca compress
-map I push i<c-a>
-map a push i<a-A><a-b>
+map I push r<c-a>
+map a push r<a-A><a-b>
 map b $vidir 
 map B $find | vidir -
 
