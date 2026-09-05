@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+set -eu
+
+if [ $# -lt 1 ]; then
+	echo "usage: extract ARCHIVE" >&2
+	exit 1
+fi
+
+arc="$1"
+dir=$(dirname -- "$arc")
+base=$(basename -- "$arc")
+
+case "$base" in
+*.tar.gz|*.tar.bz2|*.tar.xz|*.tar.lzma|*.tar.bz|*.tar.Z) name="${base%.tar.*}" ;;
+*.tgz|*.tbz|*.tbz2|*.txz) name="${base%.*}" ;;
+*) name="${base%.*}" ;;
+esac
+
+dest="$dir/$name"
+if [ -e "$dest" ]; then
+	i=1
+	while [ -e "${dest}_${i}" ]; do i=$((i+1)); done
+	dest="${dest}_${i}"
+fi
+
+tdir=$(mktemp -d)
+trap 'rm -rf "$tdir"' EXIT
+
+pass=""
+encrypted=false
+if command -v 7z >/dev/null 2>&1; then
+	if 7z l -slt -- "$arc" 2>/dev/null | grep -q "^Encrypted = +"; then
+		encrypted=true
+	fi
+fi
+
+extract_inner() {
+	local inner="$1" out="$2"
+	if [[ "$inner" == *.tar ]]; then
+		tar -xf "$inner" -C "$out"
+	else
+		7z x -y ${pass:+-p"$pass"} -o"$out" -- "$inner" >/dev/null 2>&1
+	fi
+	rm -f -- "$inner"
+}
+
+if [ "$encrypted" = true ]; then
+	printf "Password for %s: " "$base" >/dev/tty
+	read -rs pass </dev/tty || { echo "canceled" >&2; exit 1; }
+	echo >/dev/tty
+	if [ -z "$pass" ]; then
+		exit 1
+	fi
+	if ! 7z x -y -p"$pass" -o"$tdir" -- "$arc" >/dev/null 2>&1; then
+		echo "extraction failed (wrong password?)" >&2
+		exit 1
+	fi
+	while :; do
+		flat=()
+		for e in "$tdir"/* "$tdir"/.[!.]* "$tdir"/..?*; do
+			[ -e "$e" ] || continue
+			flat+=("$e")
+		done
+		[ ${#flat[@]} -eq 1 ] || break
+		[ -f "${flat[0]}" ] || break
+		inner="${flat[0]}"
+		case "$inner" in
+		*.tar|*.tar.gz|*.tgz|*.tar.bz2|*.tbz2|*.tar.xz|*.txz|*.zip|*.7z|*.rar|*.cab)
+			extract_inner "$inner" "$tdir" || break
+		;;
+		*) break ;;
+		esac
+	done
+else
+	if ! aunpack -X "$tdir" -- "$arc" >/dev/null 2>&1; then
+		echo "failed to extract $name" >&2
+		exit 1
+	fi
+fi
+
+items=()
+for e in "$tdir"/* "$tdir"/.[!.]* "$tdir"/..?*; do
+	[ -e "$e" ] && items+=("$e")
+done
+
+if [ ${#items[@]} -eq 1 ] && [ -d "${items[0]}" ]; then
+	mv -f -- "${items[0]}" "$dest"
+else
+	mkdir -p "$dest"
+	for e in "${items[@]}"; do
+		mv -f -- "$e" "$dest"/
+	done
+fi
+
+if [ -n "${id:-}" ]; then
+	lf -remote "send $id reload" >/dev/null 2>&1 || true
+fi
